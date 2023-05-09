@@ -21,9 +21,10 @@ pub(crate) struct Peer {
     key: Jwk,
 }
 
-pub(crate) struct Zone {
+pub(crate) struct Zone<T: ToRecord + Sized> {
     soa: SOA,
     ns: NS,
+    records: Vec<Record<T>>,
 }
 
 pub(crate) struct Record<T: ToRecord> {
