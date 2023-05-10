@@ -1,70 +1,50 @@
 #![allow(dead_code)]
-use anyhow::anyhow;
-use serde::{de::Visitor, Deserialize, Serialize};
-use std::net::IpAddr;
+use serde::{Deserialize, Serialize};
+use std::net::{IpAddr, SocketAddr};
 
-#[derive(Serialize)]
-pub enum RecordValue {
-    A(Box<A>),
-    TXT(Box<TXT>),
-    NULL,
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub(crate) enum RecordType {
+    A {
+        addresses: Vec<IpAddr>,
+        #[serde(skip_serializing_if = "Option::is_none", default = "default_ttl")]
+        ttl: Option<u32>,
+        healthcheck: HealthCheck,
+    },
+    TXT {
+        value: Vec<String>,
+        #[serde(skip_serializing_if = "Option::is_none", default = "default_ttl")]
+        ttl: Option<u32>,
+    },
+    LB {
+        backends: Vec<SocketAddr>,
+        kind: LBKind,
+        listeners: Vec<String>,
+        tls: TLSSettings,
+        healthcheck: HealthCheck,
+    },
 }
 
-impl RecordValue {
-    pub fn record_type(&self) -> &str {
-        match self {
-            Self::A(_) => "a",
-            Self::TXT(_) => "txt",
-            Self::NULL => "null",
-        }
-    }
-
-    pub fn record_value(self) -> Option<Box<dyn ToRecord>> {
-        match self {
-            Self::A(a) => Some(a),
-            Self::TXT(txt) => Some(txt),
-            Self::NULL => None,
-        }
-    }
-
-    pub fn from_value(typ: &str, value: Box<dyn ToRecord>) -> Result<Self, anyhow::Error> {
-        match typ {
-            "a" | "A" => Ok(Self::A(value)),
-            "txt" | "TXT" => Ok(Self::TXT(value)),
-            _ => Err(anyhow!("invalid record type")),
-        }
-    }
+#[derive(Serialize, Deserialize)]
+pub(crate) enum LBKind {
+    TCP,
+    HTTP,
 }
 
-impl Default for RecordValue {
-    fn default() -> Self {
-        Self::NULL
-    }
+#[derive(Serialize, Deserialize)]
+pub(crate) struct TLSSettings {
+    cert: String,
+    key: String,
 }
 
-struct RecordValueVisitor;
-
-impl<'de> Visitor<'de> for RecordValueVisitor {
-    type Value = RecordValue;
-
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str("expected record information")
-    }
-
-    // fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
-    // where
-    //     A: serde::de::MapAccess<'de>,
-    // {
-    // }
+#[derive(Serialize, Deserialize)]
+pub(crate) struct HealthCheck {
+    failures: u8,
+    timeout: u16,
 }
 
-impl<'de> Deserialize<'de> for RecordValue {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        deserializer.deserialize_map(RecordValueVisitor)
-    }
+impl ToRecord for RecordType {
+    fn to_record(&self) {}
 }
 
 fn default_ttl() -> Option<u32> {
@@ -98,35 +78,5 @@ pub(crate) struct NS {
 }
 
 impl ToRecord for NS {
-    fn to_record(&self) {}
-}
-
-#[derive(Serialize, Deserialize, Default)]
-pub(crate) struct A {
-    addresses: Vec<IpAddr>,
-    #[serde(skip_serializing_if = "Option::is_none", default = "default_ttl")]
-    ttl: Option<u32>,
-    // FIXME healthcheck
-}
-
-impl ToRecord for A {
-    fn to_record(&self) {}
-}
-
-#[derive(Serialize, Deserialize, Default)]
-pub(crate) struct TXT {
-    value: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none", default = "default_ttl")]
-    ttl: Option<u32>,
-}
-
-impl ToRecord for TXT {
-    fn to_record(&self) {}
-}
-
-#[derive(Serialize, Deserialize, Default)]
-pub(crate) struct NULL {}
-
-impl ToRecord for NULL {
     fn to_record(&self) {}
 }
