@@ -15,7 +15,7 @@ pub struct Config {
     pub auth_key: Jwk,
     pub listen: ListenConfig,
     pub peers: Vec<Peer>,
-    pub zones: BTreeMap<String, Zone>,
+    pub zones: BTreeMap<DNSName, Zone>,
     pub shutdown_wait: u8,
 }
 
