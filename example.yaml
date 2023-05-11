@@ -11,14 +11,14 @@ auth_key:
 # generate this key with `border keygenerate` and paste it in. This is an
 # encryption and signing key. Do not use the default!
 listen:
-  control: :5309
-  dns: :5300
+  control: 0.0.0.0:5309
+  dns: 0.0.0.0:5300
 # you must define at least one peer, this host will do fine for now.
 # peers are transformed into load balancer and "glue" records from the
 # configuration. Note the name of the peer is the `kid` below. This will
 # change.
 peers:
-  - control_server: 127.0.0.1:5309
+  - control_server: http://127.0.0.1:5309
     ips:
       - ::1
       - 127.0.0.1
@@ -32,37 +32,37 @@ shutdown_wait: 0
 zones:
   test.home.arpa:
     ns:
-      Servers:
+      servers:
         - test.home.arpa
-      TTL: 60
+      ttl: 60
     records:
       - name: test.home.arpa
-        type: A
-        value:
+        record:
+          type: A
           addresses:
             - 127.0.0.1
           healthcheck:
             - failures: 3
-              timeout: 1s
+              timeout: 1
       # this A record will almost certainly fail to work, which means the
       # record will be adjusted when the health check fails
       - name: broken.test.home.arpa
-        type: A
-        value:
+        record:
+          type: A
           addresses:
             - 172.16.3.1
           healthcheck:
             - failures: 3
-              timeout: 1s
+              timeout: 1
       - name: balancer.test.home.arpa
-        type: LB
-        value:
+        record:
+          type: LB
           backends:
             - 127.0.0.1:8001
             - 127.0.0.1:8002
           healthcheck:
             - failures: 3
-              timeout: 1s
+              timeout: 1
           kind: tcp
           # note that the name 'foo' here corresponds to the peer listed
           # above, so this will listen on localhost, ipv4 and v6.
@@ -130,10 +130,10 @@ zones:
               Hu/0QCxDJ5Hhn+LkgJnkxgM=
               -----END PRIVATE KEY-----
     soa:
-      Admin: administrator.test.home.arpa
-      Domain: test.home.arpa
-      Expire: 120
-      MinTTL: 60
-      Refresh: 60
-      Retry: 1
-      Serial: 1
+      admin: administrator.test.home.arpa
+      domain: test.home.arpa
+      expire: 120
+      minttl: 60
+      refresh: 60
+      retry: 1
+      serial: 1

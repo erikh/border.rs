@@ -2,43 +2,52 @@
 use serde::{Deserialize, Serialize};
 use std::net::{IpAddr, SocketAddr};
 
-#[derive(Serialize, Deserialize)]
+pub trait ToRecord {
+    fn to_record(&self);
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
-pub(crate) enum RecordType {
+pub enum RecordType {
+    #[serde(rename = "a", alias = "A")]
     A {
         addresses: Vec<IpAddr>,
-        #[serde(skip_serializing_if = "Option::is_none", default = "default_ttl")]
-        ttl: Option<u32>,
-        healthcheck: HealthCheck,
+        #[serde(default = "default_ttl")]
+        ttl: u32,
+        healthcheck: Vec<HealthCheck>,
     },
+    #[serde(rename = "txt", alias = "TXT")]
     TXT {
         value: Vec<String>,
-        #[serde(skip_serializing_if = "Option::is_none", default = "default_ttl")]
-        ttl: Option<u32>,
+        #[serde(default = "default_ttl")]
+        ttl: u32,
     },
+    #[serde(rename = "lb", alias = "LB")]
     LB {
         backends: Vec<SocketAddr>,
         kind: LBKind,
         listeners: Vec<String>,
-        tls: TLSSettings,
-        healthcheck: HealthCheck,
+        tls: Option<TLSSettings>,
+        healthcheck: Vec<HealthCheck>,
     },
 }
 
-#[derive(Serialize, Deserialize)]
-pub(crate) enum LBKind {
+#[derive(Debug, Serialize, Deserialize)]
+pub enum LBKind {
+    #[serde(rename = "tcp", alias = "TCP")]
     TCP,
+    #[serde(rename = "http", alias = "HTTP")]
     HTTP,
 }
 
-#[derive(Serialize, Deserialize)]
-pub(crate) struct TLSSettings {
-    cert: String,
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TLSSettings {
+    certificate: String,
     key: String,
 }
 
-#[derive(Serialize, Deserialize)]
-pub(crate) struct HealthCheck {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct HealthCheck {
     failures: u8,
     timeout: u16,
 }
@@ -47,16 +56,12 @@ impl ToRecord for RecordType {
     fn to_record(&self) {}
 }
 
-fn default_ttl() -> Option<u32> {
-    Some(30)
+fn default_ttl() -> u32 {
+    30
 }
 
-pub trait ToRecord {
-    fn to_record(&self);
-}
-
-#[derive(Serialize, Deserialize, Default)]
-pub(crate) struct SOA {
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub struct SOA {
     domain: String,
     admin: String,
     minttl: u32,
@@ -70,11 +75,11 @@ impl ToRecord for SOA {
     fn to_record(&self) {}
 }
 
-#[derive(Serialize, Deserialize, Default)]
-pub(crate) struct NS {
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub struct NS {
     servers: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none", default = "default_ttl")]
-    ttl: Option<u32>,
+    #[serde(default = "default_ttl")]
+    ttl: u32,
 }
 
 impl ToRecord for NS {

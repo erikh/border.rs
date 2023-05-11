@@ -2,40 +2,43 @@
 use crate::record_type::{RecordType, NS, SOA};
 use josekit::jwk::Jwk;
 use serde::{Deserialize, Serialize};
-use std::net::{IpAddr, SocketAddr};
+use std::{
+    collections::BTreeMap,
+    net::{IpAddr, SocketAddr},
+};
 use url::Url;
 
-#[derive(Serialize, Deserialize)]
-pub(crate) struct Config {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Config {
     auth_key: Jwk,
     listen: ListenConfig,
     peers: Vec<Peer>,
-    zones: Vec<Zone>,
+    zones: BTreeMap<String, Zone>,
     shutdown_wait: u8,
 }
 
-#[derive(Serialize, Deserialize)]
-pub(crate) struct ListenConfig {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ListenConfig {
     dns: SocketAddr,
     control: SocketAddr,
 }
 
-#[derive(Serialize, Deserialize)]
-pub(crate) struct Peer {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Peer {
     ips: Vec<IpAddr>,
     control_server: Url,
     key: Jwk,
 }
 
-#[derive(Serialize, Deserialize)]
-pub(crate) struct Zone {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Zone {
     soa: SOA,
     ns: NS,
     records: Vec<Record>,
 }
 
-#[derive(Serialize, Deserialize)]
-pub(crate) struct Record {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Record {
     name: String,
     record: RecordType,
 }
