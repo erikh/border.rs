@@ -12,7 +12,7 @@ impl Listener {
     }
 
     pub fn port(&self) -> u16 {
-        self.1.clone()
+        self.1
     }
 
     #[allow(dead_code)]
