@@ -43,7 +43,7 @@ zones:
             - 127.0.0.1
           healthcheck:
             - failures: 3
-              timeout: 1
+              timeout: 1s
       # this A record will almost certainly fail to work, which means the
       # record will be adjusted when the health check fails
       - name: broken.test.home.arpa
@@ -53,7 +53,7 @@ zones:
             - 172.16.3.1
           healthcheck:
             - failures: 3
-              timeout: 1
+              timeout: 1s
       - name: balancer.test.home.arpa
         record:
           type: LB
@@ -62,7 +62,7 @@ zones:
             - 127.0.0.1:8002
           healthcheck:
             - failures: 3
-              timeout: 1
+              timeout: 1s
           kind: tcp
           # note that the name 'foo' here corresponds to the peer listed
           # above, so this will listen on localhost, ipv4 and v6.

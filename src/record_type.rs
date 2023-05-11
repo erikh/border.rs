@@ -1,6 +1,10 @@
 #![allow(dead_code)]
+use fancy_duration::FancyDuration;
 use serde::{Deserialize, Serialize};
-use std::net::{IpAddr, SocketAddr};
+use std::{
+    net::{IpAddr, SocketAddr},
+    time::Duration,
+};
 
 pub trait ToRecord {
     fn to_record(&self);
@@ -49,7 +53,7 @@ pub struct TLSSettings {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct HealthCheck {
     failures: u8,
-    timeout: u16,
+    timeout: FancyDuration<Duration>,
 }
 
 impl ToRecord for RecordType {
