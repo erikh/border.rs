@@ -1,4 +1,5 @@
 use crate::{
+    dns_name::DNSName,
     health_check::HealthCheck,
     lb::{LBKind, TLSSettings},
 };
@@ -45,8 +46,8 @@ fn default_ttl() -> u32 {
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct SOA {
-    domain: String,
-    admin: String,
+    domain: DNSName,
+    admin: DNSName,
     minttl: u32,
     serial: u32,
     refresh: u32,
@@ -60,7 +61,7 @@ impl ToRecord for SOA {
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct NS {
-    servers: Vec<String>,
+    servers: Vec<DNSName>,
     #[serde(default = "default_ttl")]
     ttl: u32,
 }
