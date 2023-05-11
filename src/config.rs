@@ -12,11 +12,11 @@ use url::Url;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
-    auth_key: Jwk,
-    listen: ListenConfig,
-    peers: Vec<Peer>,
-    zones: BTreeMap<String, Zone>,
-    shutdown_wait: u8,
+    pub auth_key: Jwk,
+    pub listen: ListenConfig,
+    pub peers: Vec<Peer>,
+    pub zones: BTreeMap<String, Zone>,
+    pub shutdown_wait: u8,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -27,9 +27,18 @@ pub struct ListenConfig {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Peer {
-    ips: Vec<IpAddr>,
-    control_server: Url,
-    key: Jwk,
+    pub ips: Vec<IpAddr>,
+    pub control_server: Url,
+    pub key: Jwk,
+}
+
+impl Peer {
+    pub fn name(&self) -> String {
+        self.key
+            .key_id()
+            .expect("Expected the key id to be populated")
+            .to_string()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -2,6 +2,7 @@ use crate::{
     dns_name::DNSName,
     health_check::HealthCheck,
     lb::{LBKind, TLSSettings},
+    listener::Listener,
 };
 use serde::{Deserialize, Serialize};
 use std::net::{IpAddr, SocketAddr};
@@ -30,7 +31,7 @@ pub enum RecordType {
     LB {
         backends: Vec<SocketAddr>,
         kind: LBKind,
-        listeners: Vec<String>,
+        listeners: Vec<Listener>,
         tls: Option<TLSSettings>,
         healthcheck: Vec<HealthCheck>,
     },
