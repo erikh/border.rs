@@ -7,7 +7,7 @@ use josekit::{jwe::alg::aeskw::AeskwJweAlgorithm, jwk::Jwk};
 #[derive(Parser, Debug)]
 #[command(
     author = "Erik Hollensbe <erik+github@hollensbe.org",
-    about = "Generate a tree of documents for testing DID parser compliance"
+    about = "Clustered Load Balancer & DNS Service - to keep things alive above all"
 )]
 struct Args {
     #[command(subcommand)]
