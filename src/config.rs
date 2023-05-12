@@ -2,11 +2,13 @@ use crate::{
     dns_name::DNSName,
     record_type::{RecordType, NS, SOA},
 };
+use fancy_duration::FancyDuration;
 use josekit::jwk::Jwk;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
     net::{IpAddr, SocketAddr},
+    time::Duration,
 };
 use url::Url;
 
@@ -16,7 +18,7 @@ pub struct Config {
     pub listen: ListenConfig,
     pub peers: Vec<Peer>,
     pub zones: BTreeMap<DNSName, Zone>,
-    pub shutdown_wait: u8,
+    pub shutdown_wait: FancyDuration<Duration>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
