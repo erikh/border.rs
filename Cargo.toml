@@ -14,3 +14,4 @@ url = { version = "^2.3.0", features = [ "serde" ] }
 anyhow = "^1.0.0"
 trust-dns-server = "^0.22.0"
 fancy-duration = "^0.3"
+clap = { version = "^4.0", features = [ "derive" ] }
