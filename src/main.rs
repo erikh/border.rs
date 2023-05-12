@@ -16,9 +16,15 @@ struct Args {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    #[command(name = "config-check")]
+    #[command(
+        name = "config-check",
+        about = "Validate your configuration and ensure it parses"
+    )]
     ConfigCheck { filename: PathBuf },
-    #[command(name = "key-generate")]
+    #[command(
+        name = "key-generate",
+        about = "Generate a key used for client authentication, or peer authentication"
+    )]
     KeyGenerate {
         #[arg(name = "Key ID (used for peer name in some cases)")]
         peer_name: String,
