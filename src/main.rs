@@ -7,7 +7,7 @@ use josekit::{jwe::alg::aeskw::AeskwJweAlgorithm, jwk::Jwk};
 #[derive(Parser, Debug)]
 #[command(
     author = "Erik Hollensbe <erik+github@hollensbe.org",
-    about = "Clustered Load Balancer & DNS Service - to keep things alive above all"
+    about = "border: Clustered Load Balancer & DNS Service - to keep things alive above all"
 )]
 struct Args {
     #[command(subcommand)]
