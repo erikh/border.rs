@@ -12,6 +12,9 @@ fn default_ttl() -> u32 {
     30
 }
 
+// TODO trait for health checks
+// TODO trait for LB generation
+
 pub trait ToRecord {
     fn to_record(&self, domain: Name, serial: u32) -> Vec<RecordSet>;
 }
