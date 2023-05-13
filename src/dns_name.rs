@@ -4,6 +4,12 @@ use trust_dns_server::proto::rr::Name;
 #[derive(Debug, Default, Ord, PartialOrd, Eq, PartialEq)]
 pub struct DNSName(Name);
 
+impl DNSName {
+    pub fn name(&self) -> &Name {
+        &self.0
+    }
+}
+
 impl Serialize for DNSName {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where

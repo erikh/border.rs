@@ -136,8 +136,33 @@ pub struct SOA {
 }
 
 impl ToRecord for SOA {
-    fn to_record(&self, _domain: Name, _serial: u32) -> Vec<RecordSet> {
-        vec![]
+    fn to_record(&self, domain: Name, serial: u32) -> Vec<RecordSet> {
+        let mut rs = RecordSet::new(
+            &domain,
+            trust_dns_server::proto::rr::RecordType::SOA,
+            self.minttl,
+        );
+
+        let mut rec = Record::with(
+            domain.clone(),
+            trust_dns_server::proto::rr::RecordType::SOA,
+            self.minttl,
+        );
+
+        rec.set_data(Some(trust_dns_server::proto::rr::RData::SOA(
+            trust_dns_server::proto::rr::rdata::SOA::new(
+                self.domain.name().clone(),
+                self.admin.name().clone(),
+                self.serial,
+                self.refresh.try_into().unwrap(),
+                self.retry.try_into().unwrap(),
+                self.expire.try_into().unwrap(),
+                self.minttl,
+            ),
+        )));
+
+        rs.insert(rec, serial);
+        vec![rs]
     }
 }
 
@@ -149,7 +174,25 @@ pub struct NS {
 }
 
 impl ToRecord for NS {
-    fn to_record(&self, _domain: Name, _serial: u32) -> Vec<RecordSet> {
-        vec![]
+    fn to_record(&self, domain: Name, serial: u32) -> Vec<RecordSet> {
+        let mut rs = RecordSet::new(
+            &domain,
+            trust_dns_server::proto::rr::RecordType::NS,
+            self.ttl,
+        );
+
+        for ns in &self.servers {
+            let mut rec = Record::with(
+                domain.clone(),
+                trust_dns_server::proto::rr::RecordType::NS,
+                self.ttl,
+            );
+            rec.set_data(Some(trust_dns_server::proto::rr::RData::NS(
+                ns.name().clone(),
+            )));
+            rs.insert(rec, serial);
+        }
+
+        vec![rs]
     }
 }
