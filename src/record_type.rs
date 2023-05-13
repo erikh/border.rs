@@ -45,6 +45,68 @@ pub enum RecordType {
     },
 }
 
+fn generate_txt(domain: Name, serial: u32, value: Vec<String>, ttl: u32) -> Vec<RecordSet> {
+    let mut rs = RecordSet::new(&domain, trust_dns_server::proto::rr::RecordType::TXT, ttl);
+
+    let mut rec = Record::with(
+        domain.clone(),
+        trust_dns_server::proto::rr::RecordType::TXT,
+        ttl,
+    );
+
+    rec.set_data(Some(trust_dns_server::proto::rr::RData::TXT(
+        trust_dns_server::proto::rr::rdata::TXT::new(value),
+    )));
+
+    rs.insert(rec, serial);
+
+    vec![rs]
+}
+
+fn generate_a(domain: Name, serial: u32, addresses: Vec<IpAddr>, ttl: u32) -> Vec<RecordSet> {
+    let mut v4rs = RecordSet::new(&domain, trust_dns_server::proto::rr::RecordType::A, ttl);
+
+    for addr in addresses
+        .iter()
+        .filter_map(|ip| match ip {
+            IpAddr::V4(ip) => Some(*ip),
+            _ => None,
+        })
+        .collect::<Vec<Ipv4Addr>>()
+    {
+        let mut rec = Record::with(
+            domain.clone(),
+            trust_dns_server::proto::rr::RecordType::A,
+            ttl,
+        );
+        rec.set_data(Some(trust_dns_server::proto::rr::RData::A(addr)));
+
+        v4rs.insert(rec, serial);
+    }
+
+    let mut v6rs = RecordSet::new(&domain, trust_dns_server::proto::rr::RecordType::AAAA, ttl);
+
+    for addr in addresses
+        .iter()
+        .filter_map(|ip| match ip {
+            IpAddr::V6(ip) => Some(*ip),
+            _ => None,
+        })
+        .collect::<Vec<Ipv6Addr>>()
+    {
+        let mut rec = Record::with(
+            domain.clone(),
+            trust_dns_server::proto::rr::RecordType::AAAA,
+            ttl,
+        );
+        rec.set_data(Some(trust_dns_server::proto::rr::RData::AAAA(addr)));
+
+        v6rs.insert(rec, serial);
+    }
+
+    vec![v4rs, v6rs]
+}
+
 impl ToRecord for RecordType {
     fn to_record(&self, domain: Name, serial: u32) -> Vec<RecordSet> {
         match self {
@@ -56,73 +118,12 @@ impl ToRecord for RecordType {
                 tls: _,
                 healthcheck: _,
             } => vec![],
-            RecordType::TXT { value, ttl } => {
-                let mut rs =
-                    RecordSet::new(&domain, trust_dns_server::proto::rr::RecordType::TXT, *ttl);
-
-                let mut rec = Record::with(
-                    domain.clone(),
-                    trust_dns_server::proto::rr::RecordType::TXT,
-                    *ttl,
-                );
-
-                rec.set_data(Some(trust_dns_server::proto::rr::RData::TXT(
-                    trust_dns_server::proto::rr::rdata::TXT::new(value.clone()),
-                )));
-
-                rs.insert(rec, serial);
-
-                vec![rs]
-            }
+            RecordType::TXT { value, ttl } => generate_txt(domain, serial, value.clone(), *ttl),
             RecordType::A {
                 addresses,
                 ttl,
                 healthcheck: _,
-            } => {
-                let mut v4rs =
-                    RecordSet::new(&domain, trust_dns_server::proto::rr::RecordType::A, *ttl);
-
-                for addr in addresses
-                    .iter()
-                    .filter_map(|ip| match ip {
-                        IpAddr::V4(ip) => Some(*ip),
-                        _ => None,
-                    })
-                    .collect::<Vec<Ipv4Addr>>()
-                {
-                    let mut rec = Record::with(
-                        domain.clone(),
-                        trust_dns_server::proto::rr::RecordType::A,
-                        *ttl,
-                    );
-                    rec.set_data(Some(trust_dns_server::proto::rr::RData::A(addr)));
-
-                    v4rs.insert(rec, serial);
-                }
-
-                let mut v6rs =
-                    RecordSet::new(&domain, trust_dns_server::proto::rr::RecordType::AAAA, *ttl);
-
-                for addr in addresses
-                    .iter()
-                    .filter_map(|ip| match ip {
-                        IpAddr::V6(ip) => Some(*ip),
-                        _ => None,
-                    })
-                    .collect::<Vec<Ipv6Addr>>()
-                {
-                    let mut rec = Record::with(
-                        domain.clone(),
-                        trust_dns_server::proto::rr::RecordType::AAAA,
-                        *ttl,
-                    );
-                    rec.set_data(Some(trust_dns_server::proto::rr::RData::AAAA(addr)));
-
-                    v6rs.insert(rec, serial);
-                }
-
-                return vec![v4rs, v6rs];
-            }
+            } => generate_a(domain, serial, addresses.clone(), *ttl),
         }
     }
 }
