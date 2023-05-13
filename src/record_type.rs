@@ -8,6 +8,10 @@ use serde::{Deserialize, Serialize};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use trust_dns_server::proto::rr::{Name, Record, RecordSet};
 
+fn default_ttl() -> u32 {
+    30
+}
+
 pub trait ToRecord {
     fn to_record(&self, domain: Name, serial: u32) -> Vec<RecordSet>;
 }
@@ -118,10 +122,6 @@ impl ToRecord for RecordType {
             }
         }
     }
-}
-
-fn default_ttl() -> u32 {
-    30
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
