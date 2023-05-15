@@ -23,8 +23,8 @@ pub struct Config {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ListenConfig {
-    dns: SocketAddr,
-    control: SocketAddr,
+    pub dns: SocketAddr,
+    pub control: SocketAddr,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -1,7 +1,9 @@
 use crate::{config::Config, record_type::ToRecord};
-use std::{collections::BTreeMap, sync::Arc};
+use anyhow::anyhow;
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use tokio::net::{TcpListener, UdpSocket};
 use trust_dns_server::{
-    authority::Catalog, client::rr::RrKey, store::in_memory::InMemoryAuthority,
+    authority::Catalog, client::rr::RrKey, store::in_memory::InMemoryAuthority, ServerFuture,
 };
 
 pub struct Server<'a> {
@@ -9,7 +11,21 @@ pub struct Server<'a> {
 }
 
 impl Server<'_> {
-    pub fn construct_catalog(&self) -> Result<Catalog, anyhow::Error> {
+    pub async fn dns(&self) -> Result<(), anyhow::Error> {
+        let sa = self.config.listen.dns;
+        let tcp = TcpListener::bind(sa).await?;
+        let udp = UdpSocket::bind(sa).await?;
+
+        let mut sf = ServerFuture::new(self.construct_catalog()?);
+        sf.register_socket(udp);
+        sf.register_listener(tcp, Duration::new(60, 0));
+        match sf.block_until_done().await {
+            Ok(_) => Ok(()),
+            Err(e) => Err(anyhow!(e)),
+        }
+    }
+
+    fn construct_catalog(&self) -> Result<Catalog, anyhow::Error> {
         let mut catalog = Catalog::default();
 
         for (name, zone) in &self.config.zones {
