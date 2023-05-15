@@ -139,6 +139,12 @@ pub struct SOA {
     expire: u32,
 }
 
+impl SOA {
+    pub fn serial(&self) -> u32 {
+        self.serial
+    }
+}
+
 impl ToRecord for SOA {
     fn to_record(&self, domain: Name, serial: u32) -> Vec<RecordSet> {
         let mut rs = RecordSet::new(

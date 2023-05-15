@@ -45,13 +45,13 @@ impl Peer {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Zone {
-    soa: SOA,
-    ns: NS,
-    records: Vec<Record>,
+    pub soa: SOA,
+    pub ns: NS,
+    pub records: Vec<Record>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Record {
-    name: DNSName,
-    record: RecordType,
+    pub name: DNSName,
+    pub record: RecordType,
 }
