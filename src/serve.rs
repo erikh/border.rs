@@ -1,10 +1,8 @@
+use crate::{config::Config, record_type::ToRecord};
 use std::{collections::BTreeMap, sync::Arc};
-
 use trust_dns_server::{
     authority::Catalog, client::rr::RrKey, store::in_memory::InMemoryAuthority,
 };
-
-use crate::{config::Config, record_type::ToRecord};
 
 pub struct Server<'a> {
     config: &'a Config,
