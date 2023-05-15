@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum LBKind {
     #[serde(rename = "tcp", alias = "TCP")]
     TCP,
@@ -8,9 +8,8 @@ pub enum LBKind {
     HTTP,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TLSSettings {
     certificate: String,
     key: String,
 }
-

@@ -12,7 +12,7 @@ use std::{
 };
 use url::Url;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {
     pub auth_key: Jwk,
     pub listen: ListenConfig,
@@ -21,13 +21,13 @@ pub struct Config {
     pub shutdown_wait: FancyDuration<Duration>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ListenConfig {
     pub dns: SocketAddr,
     pub control: SocketAddr,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Peer {
     pub ips: Vec<IpAddr>,
     pub control_server: Url,
@@ -43,14 +43,14 @@ impl Peer {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Zone {
     pub soa: SOA,
     pub ns: NS,
     pub records: Vec<Record>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Record {
     pub name: DNSName,
     pub record: RecordType,

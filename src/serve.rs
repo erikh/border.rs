@@ -10,7 +10,17 @@ pub struct Server<'a> {
     config: &'a Config,
 }
 
-impl Server<'_> {
+impl<'a> Server<'a> {
+    pub fn new(config: &'a Config) -> Self {
+        Self { config }
+    }
+
+    pub async fn start(&self) -> Result<(), anyhow::Error> {
+        self.dns().await?;
+
+        Ok(())
+    }
+
     pub async fn dns(&self) -> Result<(), anyhow::Error> {
         let sa = self.config.listen.dns;
         let tcp = TcpListener::bind(sa).await?;

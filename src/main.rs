@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use border::config::Config;
+use border::{config::Config, serve::Server};
 use clap::{Parser, Subcommand};
 use josekit::{jwe::alg::aeskw::AeskwJweAlgorithm, jwk::Jwk};
 
@@ -29,17 +29,34 @@ enum Commands {
         #[arg(name = "Key ID (used for peer name in some cases)")]
         peer_name: String,
     },
+    #[command(name = "serve", about = "Start border")]
+    Serve {
+        #[arg(name = "Configuration file")]
+        filename: PathBuf,
+    },
 }
 
 type CommandResult = Result<(), anyhow::Error>;
 
-fn main() -> CommandResult {
+#[tokio::main]
+async fn main() -> CommandResult {
     let args = Args::parse();
 
     match args.command {
         Commands::ConfigCheck { filename } => check_config(filename),
         Commands::KeyGenerate { peer_name } => generate_key(peer_name),
+        Commands::Serve { filename } => serve(filename).await,
     }
+}
+
+async fn serve(filename: PathBuf) -> CommandResult {
+    let mut f = std::fs::OpenOptions::new();
+    f.read(true);
+    let io = f.open(filename)?;
+    let config: Config = serde_yaml::from_reader(io)?;
+
+    let server = Server::new(&config);
+    server.dns().await
 }
 
 fn check_config(filename: PathBuf) -> CommandResult {

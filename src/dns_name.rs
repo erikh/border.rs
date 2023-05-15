@@ -1,7 +1,7 @@
 use serde::{de::Visitor, Deserialize, Serialize};
 use trust_dns_server::proto::rr::Name;
 
-#[derive(Debug, Default, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Ord, PartialOrd, Eq, PartialEq)]
 pub struct DNSName(Name);
 
 impl DNSName {

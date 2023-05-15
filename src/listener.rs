@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 
 use crate::config::Config;
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Listener(String, u16);
 
 impl Listener {

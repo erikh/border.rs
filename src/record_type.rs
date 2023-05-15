@@ -19,7 +19,7 @@ pub trait ToRecord {
     fn to_record(&self, domain: Name, serial: u32) -> Vec<RecordSet>;
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum RecordType {
     #[serde(rename = "a", alias = "A")]
@@ -128,7 +128,7 @@ impl ToRecord for RecordType {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct SOA {
     domain: DNSName,
     admin: DNSName,
@@ -176,7 +176,7 @@ impl ToRecord for SOA {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct NS {
     servers: Vec<DNSName>,
     #[serde(default = "default_ttl")]
