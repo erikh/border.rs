@@ -133,7 +133,7 @@ zones:
       admin: administrator.test.home.arpa
       domain: test.home.arpa
       expire: 120
-      minttl: 60
+      minttl: 30
       refresh: 60
       retry: 1
       serial: 1
