@@ -15,7 +15,6 @@ impl Listener {
         self.1
     }
 
-    #[allow(dead_code)]
     pub fn addr(&self, c: Config) -> Option<Vec<SocketAddr>> {
         for peer in c.peers {
             if peer.name() == self.name() {
