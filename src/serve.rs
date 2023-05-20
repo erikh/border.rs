@@ -47,13 +47,15 @@ impl<'a> Server<'a> {
                     trust_dns_server::proto::rr::RecordType::SOA,
                 ),
                 zone.soa
-                    .to_record(name.name().clone(), zone.soa.serial())
+                    .to_record(self.config(), name.name().clone(), zone.soa.serial())
                     .first()
                     .expect("Expected a SOA record")
                     .clone(),
             );
 
-            let ns_records = zone.ns.to_record(name.name().clone(), zone.soa.serial());
+            let ns_records =
+                zone.ns
+                    .to_record(self.config(), name.name().clone(), zone.soa.serial());
             for record in ns_records {
                 records.insert(
                     RrKey::new(
@@ -65,9 +67,11 @@ impl<'a> Server<'a> {
             }
 
             for zonerec in &zone.records {
-                let rec = zonerec
-                    .record
-                    .to_record(zonerec.name.name().clone(), zone.soa.serial());
+                let rec = zonerec.record.to_record(
+                    self.config(),
+                    zonerec.name.name().clone(),
+                    zone.soa.serial(),
+                );
 
                 for rectype in rec {
                     records.insert(

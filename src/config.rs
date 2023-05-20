@@ -18,6 +18,8 @@ pub struct Config {
     pub listen: ListenConfig,
     pub peers: Vec<Peer>,
     pub zones: BTreeMap<DNSName, Zone>,
+    #[serde(skip)]
+    pub me: String,
     pub shutdown_wait: FancyDuration<Duration>,
 }
 

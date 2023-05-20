@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use anyhow::anyhow;
 use border::{config::Config, serve::Server};
 use clap::{Parser, Subcommand};
 use josekit::{jwe::alg::aeskw::AeskwJweAlgorithm, jwk::Jwk};
@@ -33,6 +34,8 @@ enum Commands {
     Serve {
         #[arg(name = "Configuration file")]
         filename: PathBuf,
+        #[arg(name = "Peer name (must match a registered peer's `kid` in configuration file)")]
+        peer: String,
     },
 }
 
@@ -45,15 +48,33 @@ async fn main() -> CommandResult {
     match args.command {
         Commands::ConfigCheck { filename } => check_config(filename),
         Commands::KeyGenerate { peer_name } => generate_key(peer_name),
-        Commands::Serve { filename } => serve(filename).await,
+        Commands::Serve { filename, peer } => serve(filename, peer).await,
     }
 }
 
-async fn serve(filename: PathBuf) -> CommandResult {
+async fn serve(filename: PathBuf, peer: String) -> CommandResult {
     let mut f = std::fs::OpenOptions::new();
     f.read(true);
     let io = f.open(filename)?;
-    let config: Config = serde_yaml::from_reader(io)?;
+    let mut config: Config = serde_yaml::from_reader(io)?;
+
+    let mut found = false;
+
+    for p in &config.peers {
+        if p.name() == peer {
+            found = true;
+            break;
+        }
+    }
+
+    if !found {
+        return Err(anyhow!(
+            "Peer `{}` is not listed in configuration file",
+            peer
+        ));
+    }
+
+    config.me = peer;
 
     let server = Server::new(&config);
     server.dns().await

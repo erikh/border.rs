@@ -1,4 +1,5 @@
 use crate::{
+    config::Config,
     dns_name::DNSName,
     health_check::HealthCheck,
     lb::{LBKind, TLSSettings},
@@ -16,7 +17,7 @@ fn default_ttl() -> u32 {
 // TODO trait for LB generation
 
 pub trait ToRecord {
-    fn to_record(&self, domain: Name, serial: u32) -> Vec<RecordSet>;
+    fn to_record(&self, config: &Config, domain: Name, serial: u32) -> Vec<RecordSet>;
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -42,6 +43,8 @@ pub enum RecordType {
         listeners: Vec<Listener>,
         tls: Option<TLSSettings>,
         healthcheck: Vec<HealthCheck>,
+        #[serde(default = "default_ttl")]
+        ttl: u32,
     },
 }
 
@@ -108,16 +111,40 @@ fn generate_a(domain: Name, serial: u32, addresses: Vec<IpAddr>, ttl: u32) -> Ve
 }
 
 impl ToRecord for RecordType {
-    fn to_record(&self, domain: Name, serial: u32) -> Vec<RecordSet> {
+    fn to_record(&self, config: &Config, domain: Name, serial: u32) -> Vec<RecordSet> {
         match self {
             // FIXME finish
             RecordType::LB {
                 backends: _,
                 kind: _,
-                listeners: _,
+                listeners,
                 tls: _,
                 healthcheck: _,
-            } => vec![],
+                ttl,
+            } => {
+                let mut addresses: Option<Vec<SocketAddr>> = None;
+
+                for listener in listeners {
+                    if listener.name() == config.me {
+                        addresses = listener.addr(config.clone());
+                        break;
+                    }
+                }
+
+                if let Some(addresses) = addresses {
+                    generate_a(
+                        domain,
+                        serial,
+                        addresses
+                            .iter()
+                            .map(|addr| addr.ip())
+                            .collect::<Vec<IpAddr>>(),
+                        *ttl,
+                    )
+                } else {
+                    vec![]
+                }
+            }
             RecordType::TXT { value, ttl } => generate_txt(domain, serial, value.clone(), *ttl),
             RecordType::A {
                 addresses,
@@ -146,7 +173,7 @@ impl SOA {
 }
 
 impl ToRecord for SOA {
-    fn to_record(&self, domain: Name, serial: u32) -> Vec<RecordSet> {
+    fn to_record(&self, _config: &Config, domain: Name, serial: u32) -> Vec<RecordSet> {
         let mut rs = RecordSet::new(
             &domain,
             trust_dns_server::proto::rr::RecordType::SOA,
@@ -184,7 +211,7 @@ pub struct NS {
 }
 
 impl ToRecord for NS {
-    fn to_record(&self, domain: Name, serial: u32) -> Vec<RecordSet> {
+    fn to_record(&self, _config: &Config, domain: Name, serial: u32) -> Vec<RecordSet> {
         let mut rs = RecordSet::new(
             &domain,
             trust_dns_server::proto::rr::RecordType::NS,
