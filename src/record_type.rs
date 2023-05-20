@@ -51,11 +51,7 @@ pub enum RecordType {
 fn generate_txt(domain: Name, serial: u32, value: Vec<String>, ttl: u32) -> Vec<RecordSet> {
     let mut rs = RecordSet::new(&domain, trust_dns_server::proto::rr::RecordType::TXT, ttl);
 
-    let mut rec = Record::with(
-        domain.clone(),
-        trust_dns_server::proto::rr::RecordType::TXT,
-        ttl,
-    );
+    let mut rec = Record::with(domain, trust_dns_server::proto::rr::RecordType::TXT, ttl);
 
     rec.set_data(Some(trust_dns_server::proto::rr::RData::TXT(
         trust_dns_server::proto::rr::rdata::TXT::new(value),
@@ -181,7 +177,7 @@ impl ToRecord for SOA {
         );
 
         let mut rec = Record::with(
-            domain.clone(),
+            domain,
             trust_dns_server::proto::rr::RecordType::SOA,
             self.minttl,
         );
