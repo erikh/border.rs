@@ -34,7 +34,6 @@ zones:
     ns:
       servers:
         - test.home.arpa
-      ttl: 60
     records:
       - name: test.home.arpa
         record:
