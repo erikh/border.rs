@@ -77,7 +77,7 @@ async fn serve(filename: PathBuf, peer: String) -> CommandResult {
     config.me = peer;
 
     let server = Server::new(&config);
-    server.dns().await
+    server.start().await
 }
 
 fn check_config(filename: PathBuf) -> CommandResult {

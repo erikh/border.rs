@@ -25,10 +25,8 @@ impl<'a> Server {
     }
 
     pub async fn start(&self) -> Result<(), anyhow::Error> {
-        let dns_self = self.clone();
-        tokio::spawn(async move { dns_self.dns().await.unwrap() });
-
-        for (_, zone) in &self.config.lock().await.zones {
+        let zones = &self.config.lock().await.zones.clone();
+        for (_, zone) in zones {
             let records = zone
                 .records
                 .iter()
@@ -42,20 +40,19 @@ impl<'a> Server {
                 .collect::<Vec<Record>>();
 
             for record in &records {
-                let lb = LB::new(self.config.lock().await.clone(), record.record.clone())?;
+                let config = self.config.lock().await.clone();
+                let lb = LB::new(config, record.record.clone())?;
                 tokio::spawn(async move { lb.serve().await.unwrap() });
             }
         }
 
-        Ok(())
-    }
+        self.dns().await?;
 
-    pub async fn lb(&self, _lb: LB) -> Result<(), anyhow::Error> {
         Ok(())
     }
 
     pub async fn dns(&self) -> Result<(), anyhow::Error> {
-        let sa = self.config.lock().await.listen.dns;
+        let sa = self.config.lock().await.listen.dns.clone();
         let tcp = TcpListener::bind(sa).await?;
         let udp = UdpSocket::bind(sa).await?;
 
@@ -70,8 +67,9 @@ impl<'a> Server {
 
     async fn construct_catalog(&self) -> Result<Catalog, anyhow::Error> {
         let mut catalog = Catalog::default();
+        let zones = &self.config.lock().await.zones.clone();
 
-        for (name, zone) in &self.config.lock().await.zones {
+        for (name, zone) in zones {
             let mut records = BTreeMap::default();
 
             records.insert(
