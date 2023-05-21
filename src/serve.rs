@@ -1,4 +1,4 @@
-use crate::{config::Config, record_type::ToRecord};
+use crate::{config::Config, lb::LB, record_type::ToRecord};
 use anyhow::anyhow;
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tokio::net::{TcpListener, UdpSocket};
@@ -18,6 +18,10 @@ impl<'a> Server<'a> {
     pub async fn start(&self) -> Result<(), anyhow::Error> {
         self.dns().await?;
 
+        Ok(())
+    }
+
+    pub async fn lb(&self, _lb: LB) -> Result<(), anyhow::Error> {
         Ok(())
     }
 

@@ -109,7 +109,6 @@ fn generate_a(domain: Name, serial: u32, addresses: Vec<IpAddr>, ttl: u32) -> Ve
 impl ToRecord for RecordType {
     fn to_record(&self, config: &Config, domain: Name, serial: u32) -> Vec<RecordSet> {
         match self {
-            // FIXME finish
             RecordType::LB {
                 backends: _,
                 kind: _,
