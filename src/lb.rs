@@ -1,9 +1,12 @@
 #![allow(dead_code)]
-use std::{net::SocketAddr, sync::Arc};
+use std::{collections::BTreeMap, net::SocketAddr, sync::Arc};
 
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
-use tokio::net::TcpListener;
+use tokio::{
+    net::{TcpListener, TcpStream},
+    sync::Mutex,
+};
 
 use crate::{config::Config, record_type::RecordType};
 
@@ -25,6 +28,10 @@ pub struct LB {
     config: Config,
     record: RecordType,
 }
+
+struct StreamContainer(TcpStream);
+
+type BackendCount = BTreeMap<SocketAddr, u64>;
 
 impl LB {
     pub fn new(config: Config, record: RecordType) -> Result<Self, anyhow::Error> {
@@ -72,17 +79,88 @@ impl LB {
         let addresses = self.listen_addrs()?.expect("No addresses to bind to");
 
         for address in addresses {
-            let obj = self.clone();
-            tokio::spawn(obj.serve_tcp_listener(TcpListener::bind(address).await?));
+            tokio::spawn(Self::serve_tcp_listener(
+                self.config.clone(),
+                self.backends()?,
+                address,
+            ));
         }
 
         Ok(())
     }
 
-    async fn serve_tcp_listener(self, listener: TcpListener) -> Result<(), anyhow::Error> {
-        let backends = self.backends();
+    async fn serve_tcp_listener(
+        // FIXME some kind of context to cancel this routine
+        _config: Config,
+        mut backends: Vec<SocketAddr>,
+        address: SocketAddr,
+    ) -> Result<(), anyhow::Error> {
+        let listener = TcpListener::bind(address).await?;
+        let mut backend_count = BackendCount::default();
 
-        Ok(())
+        loop {
+            let socket = listener.accept().await?;
+
+            'retry: loop {
+                let mut lowest_backend: Option<SocketAddr> = None;
+                let mut lowest_backend_count: u64 = 0;
+
+                for backend in &backends {
+                    match backend_count.get(backend) {
+                        Some(count) => {
+                            if lowest_backend_count <= *count {
+                                lowest_backend = Some(*backend);
+                                lowest_backend_count = *count;
+                            }
+                        }
+                        None => {
+                            lowest_backend = Some(*backend);
+                            lowest_backend_count = 0;
+                        }
+                    }
+                }
+
+                if let None = lowest_backend {
+                    // FIXME what do? is this even possible?
+                    lowest_backend = Some(
+                        *backends
+                            .iter()
+                            .nth(0)
+                            .expect("Could not find any backends to service"),
+                    );
+                    lowest_backend_count =
+                        *backend_count.get(&lowest_backend.unwrap()).unwrap_or(&0);
+                }
+
+                let backend = lowest_backend.unwrap();
+
+                lowest_backend_count += 1;
+                backend_count.insert(backend, lowest_backend_count);
+
+                match TcpStream::connect(backend).await {
+                    Ok(stream) => {
+                        let socket = Arc::new(Mutex::new(Box::new(socket)));
+                        let stream = Arc::new(Mutex::new(Box::new(StreamContainer(stream))));
+
+                        tokio::spawn(async move {
+                            tokio::io::copy_bidirectional(
+                                &mut socket.lock().await.0,
+                                &mut stream.lock().await.0,
+                            )
+                            .await
+                        });
+                    }
+                    // FIXME logging
+                    Err(e) => {
+                        eprintln!("{}", e);
+                        backends.retain(|be| *be != backend);
+                        continue 'retry;
+                    }
+                };
+
+                break;
+            }
+        }
     }
 
     pub async fn serve(&self) -> Result<(), anyhow::Error> {
