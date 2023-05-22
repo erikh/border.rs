@@ -1,11 +1,18 @@
 #![allow(dead_code)]
-use std::{collections::BTreeMap, net::SocketAddr, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    net::SocketAddr,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
+};
 
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use tokio::{
     net::{TcpListener, TcpStream},
-    sync::{Mutex, RwLock},
+    sync::Mutex,
 };
 
 use crate::{config::Config, record_type::RecordType};
@@ -31,7 +38,7 @@ pub struct LB {
 
 struct StreamContainer(TcpStream);
 
-type BackendCount = BTreeMap<SocketAddr, u64>;
+type BackendCount = BTreeMap<SocketAddr, AtomicU64>;
 
 impl LB {
     pub fn new(config: Config, record: RecordType) -> Result<Self, anyhow::Error> {
@@ -96,26 +103,29 @@ impl LB {
         address: SocketAddr,
     ) -> Result<(), anyhow::Error> {
         let listener = TcpListener::bind(address).await?;
-        let backend_count = Arc::new(RwLock::new(BackendCount::default()));
+        let backend_count = Arc::new(Mutex::new(BackendCount::default()));
 
         loop {
             let socket = listener.accept().await?;
 
             'retry: loop {
                 let mut lowest_backend: Option<SocketAddr> = None;
-                let mut lowest_backend_count: u64 = 0;
+                let lowest_backend_count = AtomicU64::default();
 
                 for backend in &backends {
-                    match backend_count.read().await.get(backend) {
+                    match backend_count.lock().await.get(backend) {
                         Some(count) => {
-                            if lowest_backend_count <= *count {
+                            if count.load(Ordering::Relaxed)
+                                <= lowest_backend_count.load(Ordering::Relaxed)
+                            {
                                 lowest_backend = Some(*backend);
-                                lowest_backend_count = *count;
+                                lowest_backend_count
+                                    .store(count.load(Ordering::Acquire), Ordering::SeqCst)
                             }
                         }
                         None => {
                             lowest_backend = Some(*backend);
-                            lowest_backend_count = 0;
+                            lowest_backend_count.store(0, Ordering::SeqCst);
                         }
                     }
                 }
@@ -128,20 +138,33 @@ impl LB {
                             .nth(0)
                             .expect("Could not find any backends to service"),
                     );
-                    lowest_backend_count = *backend_count
-                        .read()
-                        .await
-                        .get(&lowest_backend.unwrap())
-                        .unwrap_or(&0);
+
+                    lowest_backend_count.store(
+                        backend_count
+                            .lock()
+                            .await
+                            .get(&lowest_backend.unwrap())
+                            .unwrap()
+                            .load(Ordering::Acquire),
+                        Ordering::SeqCst,
+                    );
                 }
 
                 let backend = lowest_backend.unwrap();
 
-                lowest_backend_count += 1;
-                backend_count
-                    .write()
-                    .await
-                    .insert(backend, lowest_backend_count);
+                if backend_count.lock().await.contains_key(&backend) {
+                    backend_count
+                        .lock()
+                        .await
+                        .get(&backend)
+                        .unwrap()
+                        .fetch_add(1, Ordering::Acquire);
+                } else {
+                    backend_count
+                        .lock()
+                        .await
+                        .insert(backend, lowest_backend_count);
+                }
 
                 match TcpStream::connect(backend).await {
                     Ok(stream) => {
@@ -157,13 +180,15 @@ impl LB {
                             .await
                             {
                                 Ok(_) => {}
-                                Err(e) => eprintln!("{}", e),
+                                Err(_) => {}
                             }
 
-                            backend_count.write().await.insert(
-                                backend,
-                                backend_count.read().await.get(&backend).unwrap() - 1,
-                            );
+                            backend_count
+                                .lock()
+                                .await
+                                .get(&backend)
+                                .unwrap()
+                                .fetch_sub(1, Ordering::Acquire);
                         });
                     }
                     // FIXME logging
