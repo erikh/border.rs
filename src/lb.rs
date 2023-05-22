@@ -150,12 +150,15 @@ impl LB {
                         let backend_count = backend_count.clone();
 
                         tokio::spawn(async move {
-                            tokio::io::copy_bidirectional(
+                            match tokio::io::copy_bidirectional(
                                 &mut socket.lock().await.0,
                                 &mut stream.lock().await.0,
                             )
                             .await
-                            .unwrap();
+                            {
+                                Ok(_) => {}
+                                Err(e) => eprintln!("{}", e),
+                            }
 
                             backend_count.write().await.insert(
                                 backend,
