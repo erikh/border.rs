@@ -5,7 +5,7 @@ use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use tokio::{
     net::{TcpListener, TcpStream},
-    sync::Mutex,
+    sync::{Mutex, RwLock},
 };
 
 use crate::{config::Config, record_type::RecordType};
@@ -96,7 +96,7 @@ impl LB {
         address: SocketAddr,
     ) -> Result<(), anyhow::Error> {
         let listener = TcpListener::bind(address).await?;
-        let mut backend_count = BackendCount::default();
+        let backend_count = Arc::new(RwLock::new(BackendCount::default()));
 
         loop {
             let socket = listener.accept().await?;
@@ -106,7 +106,7 @@ impl LB {
                 let mut lowest_backend_count: u64 = 0;
 
                 for backend in &backends {
-                    match backend_count.get(backend) {
+                    match backend_count.read().await.get(backend) {
                         Some(count) => {
                             if lowest_backend_count <= *count {
                                 lowest_backend = Some(*backend);
@@ -128,19 +128,26 @@ impl LB {
                             .nth(0)
                             .expect("Could not find any backends to service"),
                     );
-                    lowest_backend_count =
-                        *backend_count.get(&lowest_backend.unwrap()).unwrap_or(&0);
+                    lowest_backend_count = *backend_count
+                        .read()
+                        .await
+                        .get(&lowest_backend.unwrap())
+                        .unwrap_or(&0);
                 }
 
                 let backend = lowest_backend.unwrap();
 
                 lowest_backend_count += 1;
-                backend_count.insert(backend, lowest_backend_count);
+                backend_count
+                    .write()
+                    .await
+                    .insert(backend, lowest_backend_count);
 
                 match TcpStream::connect(backend).await {
                     Ok(stream) => {
                         let socket = Arc::new(Mutex::new(Box::new(socket)));
                         let stream = Arc::new(Mutex::new(Box::new(StreamContainer(stream))));
+                        let backend_count = backend_count.clone();
 
                         tokio::spawn(async move {
                             tokio::io::copy_bidirectional(
@@ -148,6 +155,12 @@ impl LB {
                                 &mut stream.lock().await.0,
                             )
                             .await
+                            .unwrap();
+
+                            backend_count.write().await.insert(
+                                backend,
+                                backend_count.read().await.get(&backend).unwrap() - 1,
+                            );
                         });
                     }
                     // FIXME logging
