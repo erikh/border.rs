@@ -62,21 +62,21 @@ impl BackendCount {
             .fetch_sub(1, Ordering::Acquire);
     }
 
-    pub async fn get_backend(&mut self, backends: Arc<Mutex<Vec<SocketAddr>>>) -> SocketAddr {
+    pub async fn get_backend(&mut self, backends: Vec<SocketAddr>) -> SocketAddr {
         let mut lowest_backend: Option<SocketAddr> = None;
         let lowest_backend_count = AtomicU64::default();
 
-        for backend in backends.lock().await.clone() {
-            match self.0.get(&backend) {
+        for backend in &backends {
+            match self.0.get(backend) {
                 Some(count) => {
                     if count.load(Ordering::Relaxed) <= lowest_backend_count.load(Ordering::Relaxed)
                     {
-                        lowest_backend = Some(backend);
+                        lowest_backend = Some(*backend);
                         lowest_backend_count.store(count.load(Ordering::Acquire), Ordering::SeqCst)
                     }
                 }
                 None => {
-                    lowest_backend = Some(backend);
+                    lowest_backend = Some(*backend);
                     lowest_backend_count.store(0, Ordering::SeqCst);
                 }
             }
@@ -85,8 +85,6 @@ impl BackendCount {
         if let None = lowest_backend {
             lowest_backend = Some(
                 *backends
-                    .lock()
-                    .await
                     .iter()
                     .nth(0)
                     .expect("Could not find any backends to service"),
@@ -189,7 +187,7 @@ impl LB {
     }
 
     async fn http_handler(
-        backends: Arc<Mutex<Vec<SocketAddr>>>,
+        backends: Vec<SocketAddr>,
         backend_count: Arc<Mutex<BackendCount>>,
         address: SocketAddr,
         client: Arc<Client<HttpConnector>>,
@@ -214,11 +212,7 @@ impl LB {
             );
         }
 
-        let backend = backend_count
-            .lock()
-            .await
-            .get_backend(backends.clone())
-            .await;
+        let backend = backend_count.lock().await.get_backend(backends).await;
 
         let mut uri_parts = req.uri().clone().into_parts();
         uri_parts.scheme = Some(Scheme::HTTP);
@@ -236,10 +230,7 @@ impl LB {
 
         match res {
             Ok(resp) => Ok(resp),
-            Err(_) => {
-                backends.lock().await.retain(|be| *be != backend);
-                Ok(Response::builder().status(403).body(Body::empty()).unwrap())
-            }
+            Err(_) => Ok(Response::builder().status(403).body(Body::empty()).unwrap()),
         }
     }
 
@@ -249,9 +240,19 @@ impl LB {
         backends: Vec<SocketAddr>,
         address: SocketAddr,
     ) -> Result<(), anyhow::Error> {
-        let backends = Arc::new(Mutex::new(backends));
+        let backends = Arc::new(backends);
         let backend_count = Arc::new(Mutex::new(BackendCount::default()));
-        let client = Arc::new(Client::new());
+
+        let mut connector = HttpConnector::new();
+        connector.set_reuse_address(true);
+        connector.set_keepalive(Some(std::time::Duration::new(1, 0)));
+
+        let client = Arc::new(
+            Client::builder()
+                .pool_idle_timeout(None)
+                .http1_title_case_headers(true)
+                .build(connector),
+        );
 
         let service = make_service_fn(move |_conn| {
             let backend_count = backend_count.clone();
@@ -259,7 +260,7 @@ impl LB {
             let client = client.clone();
             let service = service_fn(move |req| {
                 Self::http_handler(
-                    backends.clone(),
+                    backends.clone().to_vec(),
                     backend_count.clone(),
                     address,
                     client.clone(),
@@ -287,12 +288,11 @@ impl LB {
     async fn serve_tcp_listener(
         context: Arc<AtomicBool>,
         _config: Config,
-        backends: Vec<SocketAddr>,
+        mut backends: Vec<SocketAddr>,
         address: SocketAddr,
     ) -> Result<(), anyhow::Error> {
         let listener = TcpListener::bind(address).await?;
         let backend_count = Arc::new(Mutex::new(BackendCount::default()));
-        let backends = Arc::new(Mutex::new(backends));
 
         loop {
             if context.load(Ordering::Relaxed) {
@@ -331,7 +331,7 @@ impl LB {
                     // FIXME logging
                     Err(e) => {
                         eprintln!("{}", e);
-                        backends.lock().await.retain(|be| *be != backend);
+                        backends.retain(|be| *be != backend);
                         continue 'retry;
                     }
                 };
