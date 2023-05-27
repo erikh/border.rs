@@ -65,7 +65,7 @@ zones:
           healthcheck:
             - failures: 3
               timeout: 1s
-          kind: tcp
+          kind: http
           # note that the name 'foo' here corresponds to the peer listed
           # above, so this will listen on localhost, ipv4 and v6.
           listeners:

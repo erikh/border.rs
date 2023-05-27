@@ -1,7 +1,9 @@
 #![allow(dead_code)]
 use std::{
     collections::BTreeMap,
+    convert::Infallible,
     net::SocketAddr,
+    str::FromStr,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
@@ -9,6 +11,15 @@ use std::{
 };
 
 use anyhow::anyhow;
+use hyper::{
+    client::HttpConnector,
+    http::{
+        uri::{Authority, Scheme},
+        HeaderValue,
+    },
+    service::{make_service_fn, service_fn},
+    Body, Client, Request, Response, Server, Uri,
+};
 use serde::{Deserialize, Serialize};
 use tokio::{
     net::{TcpListener, TcpStream},
@@ -16,6 +27,8 @@ use tokio::{
 };
 
 use crate::{config::Config, record_type::RecordType};
+
+const HEADER_X_FORWARDED_FOR: &str = "X-Forwarded-For";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum LBKind {
@@ -38,7 +51,70 @@ pub struct LB {
 
 struct StreamContainer(TcpStream);
 
-type BackendCount = BTreeMap<SocketAddr, AtomicU64>;
+#[derive(Default)]
+struct BackendCount(BTreeMap<SocketAddr, AtomicU64>);
+
+impl BackendCount {
+    pub fn finished(&mut self, backend: SocketAddr) {
+        self.0
+            .get(&backend)
+            .unwrap()
+            .fetch_sub(1, Ordering::Acquire);
+    }
+
+    pub async fn get_backend(&mut self, backends: Arc<Mutex<Vec<SocketAddr>>>) -> SocketAddr {
+        let mut lowest_backend: Option<SocketAddr> = None;
+        let lowest_backend_count = AtomicU64::default();
+
+        for backend in backends.lock().await.clone() {
+            match self.0.get(&backend) {
+                Some(count) => {
+                    if count.load(Ordering::Relaxed) <= lowest_backend_count.load(Ordering::Relaxed)
+                    {
+                        lowest_backend = Some(backend);
+                        lowest_backend_count.store(count.load(Ordering::Acquire), Ordering::SeqCst)
+                    }
+                }
+                None => {
+                    lowest_backend = Some(backend);
+                    lowest_backend_count.store(0, Ordering::SeqCst);
+                }
+            }
+        }
+
+        if let None = lowest_backend {
+            lowest_backend = Some(
+                *backends
+                    .lock()
+                    .await
+                    .iter()
+                    .nth(0)
+                    .expect("Could not find any backends to service"),
+            );
+
+            lowest_backend_count.store(
+                self.0
+                    .get(&lowest_backend.unwrap())
+                    .unwrap()
+                    .load(Ordering::Acquire),
+                Ordering::SeqCst,
+            );
+        }
+
+        let backend = lowest_backend.unwrap();
+
+        if self.0.contains_key(&backend) {
+            self.0
+                .get(&backend)
+                .unwrap()
+                .fetch_add(1, Ordering::Acquire);
+        } else {
+            self.0.insert(backend, lowest_backend_count);
+        }
+
+        backend
+    }
+}
 
 impl LB {
     pub fn new(config: Config, record: RecordType) -> Result<Self, anyhow::Error> {
@@ -82,6 +158,21 @@ impl LB {
         }
     }
 
+    async fn serve_http(&self, context: Arc<AtomicBool>) -> Result<(), anyhow::Error> {
+        let addresses = self.listen_addrs()?.expect("No addresses to bind to");
+
+        for address in addresses {
+            tokio::spawn(Self::serve_http_listener(
+                context.clone(),
+                self.config.clone(),
+                self.backends()?,
+                address,
+            ));
+        }
+
+        Ok(())
+    }
+
     async fn serve_tcp(&self, context: Arc<AtomicBool>) -> Result<(), anyhow::Error> {
         let addresses = self.listen_addrs()?.expect("No addresses to bind to");
 
@@ -97,14 +188,111 @@ impl LB {
         Ok(())
     }
 
+    async fn http_handler(
+        backends: Arc<Mutex<Vec<SocketAddr>>>,
+        backend_count: Arc<Mutex<BackendCount>>,
+        address: SocketAddr,
+        client: Arc<Client<HttpConnector>>,
+        req: Request<Body>,
+    ) -> Result<Response<Body>, Infallible> {
+        let mut headers = req.headers().clone();
+
+        if let Some(xff) = headers.get(HEADER_X_FORWARDED_FOR) {
+            headers.insert(
+                HEADER_X_FORWARDED_FOR,
+                HeaderValue::from_str(&format!(
+                    "{},{}",
+                    address.ip().to_string(),
+                    xff.clone().to_str().unwrap(),
+                ))
+                .unwrap(),
+            );
+        } else {
+            headers.insert(
+                HEADER_X_FORWARDED_FOR,
+                HeaderValue::from_str(&address.ip().to_string()).unwrap(),
+            );
+        }
+
+        let backend = backend_count
+            .lock()
+            .await
+            .get_backend(backends.clone())
+            .await;
+
+        let mut uri_parts = req.uri().clone().into_parts();
+        uri_parts.scheme = Some(Scheme::HTTP);
+        uri_parts.authority = Some(Authority::from_str(&backend.to_string()).unwrap());
+        let uri = Uri::from_parts(uri_parts).unwrap();
+
+        let (mut parts, body) = req.into_parts();
+        parts.uri = uri;
+        parts.headers = headers.clone();
+
+        let newreq = Request::from_parts(parts, body);
+
+        let res = client.request(newreq).await;
+        backend_count.lock().await.finished(backend);
+
+        match res {
+            Ok(resp) => Ok(resp),
+            Err(_) => {
+                backends.lock().await.retain(|be| *be != backend);
+                Ok(Response::builder().status(403).body(Body::empty()).unwrap())
+            }
+        }
+    }
+
+    async fn serve_http_listener(
+        context: Arc<AtomicBool>,
+        _config: Config,
+        backends: Vec<SocketAddr>,
+        address: SocketAddr,
+    ) -> Result<(), anyhow::Error> {
+        let backends = Arc::new(Mutex::new(backends));
+        let backend_count = Arc::new(Mutex::new(BackendCount::default()));
+        let client = Arc::new(Client::new());
+
+        let service = make_service_fn(move |_conn| {
+            let backend_count = backend_count.clone();
+            let backends = backends.clone();
+            let client = client.clone();
+            let service = service_fn(move |req| {
+                Self::http_handler(
+                    backends.clone(),
+                    backend_count.clone(),
+                    address,
+                    client.clone(),
+                    req,
+                )
+            });
+
+            async move { Ok::<_, Infallible>(service) }
+        });
+
+        let handle = tokio::spawn(Server::bind(&address).serve(service));
+
+        loop {
+            if context.load(Ordering::Relaxed) {
+                handle.abort();
+                break;
+            }
+
+            tokio::time::sleep(std::time::Duration::new(0, 1000000)).await;
+        }
+
+        Ok(())
+    }
+
     async fn serve_tcp_listener(
         context: Arc<AtomicBool>,
         _config: Config,
-        mut backends: Vec<SocketAddr>,
+        backends: Vec<SocketAddr>,
         address: SocketAddr,
     ) -> Result<(), anyhow::Error> {
         let listener = TcpListener::bind(address).await?;
         let backend_count = Arc::new(Mutex::new(BackendCount::default()));
+        let backends = Arc::new(Mutex::new(backends));
 
         loop {
             if context.load(Ordering::Relaxed) {
@@ -114,61 +302,11 @@ impl LB {
             let socket = listener.accept().await?;
 
             'retry: loop {
-                let mut lowest_backend: Option<SocketAddr> = None;
-                let lowest_backend_count = AtomicU64::default();
-
-                for backend in &backends {
-                    match backend_count.lock().await.get(backend) {
-                        Some(count) => {
-                            if count.load(Ordering::Relaxed)
-                                <= lowest_backend_count.load(Ordering::Relaxed)
-                            {
-                                lowest_backend = Some(*backend);
-                                lowest_backend_count
-                                    .store(count.load(Ordering::Acquire), Ordering::SeqCst)
-                            }
-                        }
-                        None => {
-                            lowest_backend = Some(*backend);
-                            lowest_backend_count.store(0, Ordering::SeqCst);
-                        }
-                    }
-                }
-
-                if let None = lowest_backend {
-                    lowest_backend = Some(
-                        *backends
-                            .iter()
-                            .nth(0)
-                            .expect("Could not find any backends to service"),
-                    );
-
-                    lowest_backend_count.store(
-                        backend_count
-                            .lock()
-                            .await
-                            .get(&lowest_backend.unwrap())
-                            .unwrap()
-                            .load(Ordering::Acquire),
-                        Ordering::SeqCst,
-                    );
-                }
-
-                let backend = lowest_backend.unwrap();
-
-                if backend_count.lock().await.contains_key(&backend) {
-                    backend_count
-                        .lock()
-                        .await
-                        .get(&backend)
-                        .unwrap()
-                        .fetch_add(1, Ordering::Acquire);
-                } else {
-                    backend_count
-                        .lock()
-                        .await
-                        .insert(backend, lowest_backend_count);
-                }
+                let backend = backend_count
+                    .lock()
+                    .await
+                    .get_backend(backends.clone())
+                    .await;
 
                 match TcpStream::connect(backend).await {
                     Ok(stream) => {
@@ -187,18 +325,13 @@ impl LB {
                                 Err(_) => {}
                             }
 
-                            backend_count
-                                .lock()
-                                .await
-                                .get(&backend)
-                                .unwrap()
-                                .fetch_sub(1, Ordering::Acquire);
+                            backend_count.lock().await.finished(backend);
                         });
                     }
                     // FIXME logging
                     Err(e) => {
                         eprintln!("{}", e);
-                        backends.retain(|be| *be != backend);
+                        backends.lock().await.retain(|be| *be != backend);
                         continue 'retry;
                     }
                 };
@@ -211,7 +344,7 @@ impl LB {
     pub async fn serve(&self, context: Arc<AtomicBool>) -> Result<(), anyhow::Error> {
         match self.kind() {
             Ok(LBKind::TCP) => self.serve_tcp(context).await,
-            Ok(LBKind::HTTP) => Err(anyhow!("HTTP load balancers aren't supported yet")),
+            Ok(LBKind::HTTP) => self.serve_http(context).await,
             Err(e) => Err(e),
         }
     }
