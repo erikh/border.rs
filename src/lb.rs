@@ -3,7 +3,7 @@ use std::{
     collections::BTreeMap,
     net::SocketAddr,
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
     },
 };
@@ -82,11 +82,12 @@ impl LB {
         }
     }
 
-    async fn serve_tcp(&self) -> Result<(), anyhow::Error> {
+    async fn serve_tcp(&self, context: Arc<AtomicBool>) -> Result<(), anyhow::Error> {
         let addresses = self.listen_addrs()?.expect("No addresses to bind to");
 
         for address in addresses {
             tokio::spawn(Self::serve_tcp_listener(
+                context.clone(),
                 self.config.clone(),
                 self.backends()?,
                 address,
@@ -97,7 +98,7 @@ impl LB {
     }
 
     async fn serve_tcp_listener(
-        // FIXME some kind of context to cancel this routine
+        context: Arc<AtomicBool>,
         _config: Config,
         mut backends: Vec<SocketAddr>,
         address: SocketAddr,
@@ -106,6 +107,10 @@ impl LB {
         let backend_count = Arc::new(Mutex::new(BackendCount::default()));
 
         loop {
+            if context.load(Ordering::Relaxed) {
+                return Ok(());
+            }
+
             let socket = listener.accept().await?;
 
             'retry: loop {
@@ -131,7 +136,6 @@ impl LB {
                 }
 
                 if let None = lowest_backend {
-                    // FIXME what do? is this even possible?
                     lowest_backend = Some(
                         *backends
                             .iter()
@@ -204,9 +208,9 @@ impl LB {
         }
     }
 
-    pub async fn serve(&self) -> Result<(), anyhow::Error> {
+    pub async fn serve(&self, context: Arc<AtomicBool>) -> Result<(), anyhow::Error> {
         match self.kind() {
-            Ok(LBKind::TCP) => self.serve_tcp().await,
+            Ok(LBKind::TCP) => self.serve_tcp(context).await,
             Ok(LBKind::HTTP) => Err(anyhow!("HTTP load balancers aren't supported yet")),
             Err(e) => Err(e),
         }

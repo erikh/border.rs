@@ -4,7 +4,14 @@ use crate::{
     record_type::{RecordType, ToRecord},
 };
 use anyhow::anyhow;
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::{
+    collections::BTreeMap,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 use tokio::{
     net::{TcpListener, UdpSocket},
     sync::Mutex,
@@ -16,12 +23,18 @@ use trust_dns_server::{
 #[derive(Clone)]
 pub struct Server {
     config: Arc<Mutex<Config>>,
+    context: Arc<AtomicBool>,
 }
 
-impl<'a> Server {
+impl Server {
     pub fn new(config: &Config) -> Self {
         let config = Arc::new(Mutex::new(config.clone()));
-        Self { config }
+        let context = Arc::new(AtomicBool::default());
+        Self { config, context }
+    }
+
+    pub fn shutdown(&self) {
+        self.context.store(true, Ordering::Relaxed)
     }
 
     pub async fn start(&self) -> Result<(), anyhow::Error> {
@@ -42,11 +55,22 @@ impl<'a> Server {
             for record in &records {
                 let config = self.config.lock().await.clone();
                 let lb = LB::new(config, record.record.clone())?;
-                tokio::spawn(async move { lb.serve().await.unwrap() });
+                let context = self.context.clone();
+                tokio::spawn(async move { lb.serve(context).await.unwrap() });
             }
         }
 
-        self.dns().await?;
+        let obj = self.clone();
+        let handle = tokio::spawn(async move { obj.dns().await.unwrap() });
+
+        loop {
+            if self.context.load(Ordering::Relaxed) {
+                handle.abort();
+                break;
+            }
+
+            tokio::time::sleep(std::time::Duration::new(0, 1000000)).await;
+        }
 
         Ok(())
     }
