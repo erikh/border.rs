@@ -170,21 +170,6 @@ impl LB {
         Ok(())
     }
 
-    async fn serve_tcp(&self, context: Arc<AtomicBool>) -> Result<(), anyhow::Error> {
-        let addresses = self.listen_addrs()?.expect("No addresses to bind to");
-
-        for address in addresses {
-            tokio::spawn(Self::serve_tcp_listener(
-                context.clone(),
-                self.config.clone(),
-                self.backends()?,
-                address,
-            ));
-        }
-
-        Ok(())
-    }
-
     async fn http_handler(
         backends: Vec<SocketAddr>,
         backend_count: Arc<Mutex<BackendCount>>,
@@ -279,6 +264,21 @@ impl LB {
             }
 
             tokio::time::sleep(std::time::Duration::new(0, 1000000)).await;
+        }
+
+        Ok(())
+    }
+
+    async fn serve_tcp(&self, context: Arc<AtomicBool>) -> Result<(), anyhow::Error> {
+        let addresses = self.listen_addrs()?.expect("No addresses to bind to");
+
+        for address in addresses {
+            tokio::spawn(Self::serve_tcp_listener(
+                context.clone(),
+                self.config.clone(),
+                self.backends()?,
+                address,
+            ));
         }
 
         Ok(())
