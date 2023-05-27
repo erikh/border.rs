@@ -210,7 +210,10 @@ impl LB {
         let newreq = Request::from_parts(parts, body);
 
         let res = client.request(newreq).await;
-        backend_count.lock().await.finished(backend);
+
+        tokio::spawn(async move {
+            backend_count.lock().await.finished(backend);
+        });
 
         match res {
             Ok(resp) => Ok(resp),
