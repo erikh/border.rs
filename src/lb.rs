@@ -1,6 +1,5 @@
 use std::{
     collections::BTreeMap,
-    convert::Infallible,
     net::SocketAddr,
     str::FromStr,
     sync::{
@@ -176,7 +175,7 @@ impl LB {
         address: SocketAddr,
         client: Arc<Client<HttpConnector>>,
         req: Request<Body>,
-    ) -> Result<Response<Body>, Infallible> {
+    ) -> Result<Response<Body>, anyhow::Error> {
         let mut headers = req.headers().clone();
 
         if let Some(xff) = headers.get(HEADER_X_FORWARDED_FOR) {
@@ -255,7 +254,7 @@ impl LB {
                 )
             });
 
-            async move { Ok::<_, Infallible>(service) }
+            async move { Ok::<_, anyhow::Error>(service) }
         });
 
         let handle = tokio::spawn(Server::bind(&address).serve(service));
