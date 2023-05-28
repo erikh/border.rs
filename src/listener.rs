@@ -2,7 +2,7 @@ use crate::config::SafeConfig;
 use serde::{de::Visitor, Deserialize, Serialize};
 use std::net::SocketAddr;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Listener(String, u16);
 
 impl Listener {
