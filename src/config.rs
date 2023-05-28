@@ -8,9 +8,13 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
     net::{IpAddr, SocketAddr},
+    sync::Arc,
     time::Duration,
 };
+use tokio::sync::Mutex;
 use url::Url;
+
+pub type SafeConfig = Arc<Mutex<Config>>;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {

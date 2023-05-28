@@ -1,8 +1,6 @@
+use crate::config::SafeConfig;
 use serde::{de::Visitor, Deserialize, Serialize};
-use std::{net::SocketAddr, sync::Arc};
-use tokio::sync::Mutex;
-
-use crate::config::Config;
+use std::net::SocketAddr;
 
 #[derive(Clone, Debug, Default)]
 pub struct Listener(String, u16);
@@ -16,7 +14,7 @@ impl Listener {
         self.1
     }
 
-    pub async fn addr(&self, c: Arc<Mutex<Config>>) -> Option<Vec<SocketAddr>> {
+    pub async fn addr(&self, c: SafeConfig) -> Option<Vec<SocketAddr>> {
         for peer in &c.lock().await.peers {
             if peer.name() == self.name() {
                 return Some(

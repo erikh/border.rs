@@ -1,5 +1,5 @@
 use crate::{
-    config::{Config, Record},
+    config::{Record, SafeConfig},
     lb::LB,
     record_type::{RecordType, ToRecord},
 };
@@ -12,22 +12,19 @@ use std::{
     },
     time::Duration,
 };
-use tokio::{
-    net::{TcpListener, UdpSocket},
-    sync::Mutex,
-};
+use tokio::net::{TcpListener, UdpSocket};
 use trust_dns_server::{
     authority::Catalog, client::rr::RrKey, store::in_memory::InMemoryAuthority, ServerFuture,
 };
 
 #[derive(Clone)]
 pub struct Server {
-    config: Arc<Mutex<Config>>,
+    config: SafeConfig,
     context: Arc<AtomicBool>,
 }
 
 impl Server {
-    pub fn new(config: Arc<Mutex<Config>>) -> Self {
+    pub fn new(config: SafeConfig) -> Self {
         let context = Arc::new(AtomicBool::default());
         Self { config, context }
     }

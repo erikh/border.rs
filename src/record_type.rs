@@ -1,5 +1,5 @@
 use crate::{
-    config::Config,
+    config::SafeConfig,
     dns_name::DNSName,
     health_check::HealthCheck,
     lb::{LBKind, TLSSettings},
@@ -7,11 +7,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::{
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    sync::Arc,
-};
-use tokio::sync::Mutex;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use trust_dns_server::proto::rr::{Name, Record, RecordSet};
 
 fn default_ttl() -> u32 {
@@ -23,12 +19,7 @@ fn default_ttl() -> u32 {
 
 #[async_trait]
 pub trait ToRecord {
-    async fn to_record(
-        &self,
-        config: Arc<Mutex<Config>>,
-        domain: Name,
-        serial: u32,
-    ) -> Vec<RecordSet>;
+    async fn to_record(&self, config: SafeConfig, domain: Name, serial: u32) -> Vec<RecordSet>;
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -119,12 +110,7 @@ fn generate_a(domain: Name, serial: u32, addresses: Vec<IpAddr>, ttl: u32) -> Ve
 
 #[async_trait]
 impl ToRecord for RecordType {
-    async fn to_record(
-        &self,
-        config: Arc<Mutex<Config>>,
-        domain: Name,
-        serial: u32,
-    ) -> Vec<RecordSet> {
+    async fn to_record(&self, config: SafeConfig, domain: Name, serial: u32) -> Vec<RecordSet> {
         match self {
             RecordType::LB { listeners, ttl, .. } => {
                 let mut addresses: Option<Vec<SocketAddr>> = None;
@@ -180,12 +166,7 @@ impl SOA {
 
 #[async_trait]
 impl ToRecord for SOA {
-    async fn to_record(
-        &self,
-        _config: Arc<Mutex<Config>>,
-        domain: Name,
-        serial: u32,
-    ) -> Vec<RecordSet> {
+    async fn to_record(&self, _config: SafeConfig, domain: Name, serial: u32) -> Vec<RecordSet> {
         let mut rs = RecordSet::new(
             &domain,
             trust_dns_server::proto::rr::RecordType::SOA,
@@ -224,12 +205,7 @@ pub struct NS {
 
 #[async_trait]
 impl ToRecord for NS {
-    async fn to_record(
-        &self,
-        _config: Arc<Mutex<Config>>,
-        domain: Name,
-        serial: u32,
-    ) -> Vec<RecordSet> {
+    async fn to_record(&self, _config: SafeConfig, domain: Name, serial: u32) -> Vec<RecordSet> {
         let mut rs = RecordSet::new(
             &domain,
             trust_dns_server::proto::rr::RecordType::NS,

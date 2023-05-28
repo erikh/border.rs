@@ -24,7 +24,7 @@ use tokio::{
     sync::Mutex,
 };
 
-use crate::{config::Config, record_type::RecordType};
+use crate::{config::SafeConfig, record_type::RecordType};
 
 const HEADER_X_FORWARDED_FOR: &str = "X-Forwarded-For";
 
@@ -43,7 +43,7 @@ pub struct TLSSettings {
 }
 
 pub struct LB {
-    config: Arc<Mutex<Config>>,
+    config: SafeConfig,
     record: RecordType,
 }
 
@@ -113,7 +113,7 @@ impl BackendCount {
 }
 
 impl LB {
-    pub fn new(config: Arc<Mutex<Config>>, record: RecordType) -> Result<Self, anyhow::Error> {
+    pub fn new(config: SafeConfig, record: RecordType) -> Result<Self, anyhow::Error> {
         match record {
             RecordType::LB { .. } => {}
             _ => return Err(anyhow!("Record type was not LB")),
