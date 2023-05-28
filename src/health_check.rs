@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::{net::SocketAddr, time::Duration};
 use tokio::net::TcpStream;
 
-use crate::{config::SafeConfig, dns_name::DNSName, record_type::RecordType};
+use crate::{config::SafeConfig, dns_name::DNSName, listener::Listener, record_type::RecordType};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub enum HealthCheckType {
@@ -35,6 +35,7 @@ pub struct HealthCheckAction {
     target: SocketAddr,
     target_type: HealthCheckTargetType,
     target_name: Option<DNSName>,
+    listener: Option<Listener>,
 }
 
 #[derive(Clone)]
@@ -55,6 +56,7 @@ impl HealthCheck {
             target,
             target_type,
             target_name,
+            listener: None,
         }
     }
 }
@@ -71,6 +73,35 @@ impl HealthCheckAction {
         match TcpStream::connect(self.target).await {
             Ok(_) => Ok(()),
             Err(e) => Err(anyhow!(e)),
+        }
+    }
+
+    async fn add_config(&self, config: SafeConfig) {
+        match self.target_type {
+            HealthCheckTargetType::DNS => {
+                let target_name = self.target_name.clone().unwrap();
+                let mut zones = config.lock().await.zones.clone();
+
+                for zone in &mut zones {
+                    for record in &mut zone.1.records {
+                        if record.name == target_name {
+                            match &mut record.record {
+                                RecordType::A { addresses, .. } => addresses.push(self.target.ip()),
+                                RecordType::LB { listeners, .. } => {
+                                    if let Some(lis) = &self.listener {
+                                        listeners.push(lis.clone())
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+
+                config.lock().await.zones = zones;
+            }
+            HealthCheckTargetType::LBFrontend => {}
+            HealthCheckTargetType::LBBackend => {}
         }
     }
 
@@ -91,7 +122,7 @@ impl HealthCheckAction {
                                 RecordType::LB { listeners, .. } => {
                                     let mut newlis = Vec::new();
                                     for lis in &mut *listeners {
-                                        if lis
+                                        if !lis
                                             .addr(config.clone())
                                             .await
                                             .expect(
@@ -100,6 +131,8 @@ impl HealthCheckAction {
                                             .contains(&self.target)
                                         {
                                             newlis.push(lis.clone());
+                                        } else {
+                                            self.listener = Some(lis)
                                         }
                                     }
 
@@ -139,13 +172,15 @@ impl HealthCheckAction {
                             RecordType::LB { listeners, .. } => {
                                 let mut newlis = Vec::new();
                                 for lis in &mut *listeners {
-                                    if lis
+                                    if !lis
                                         .addr(config.clone())
                                         .await
                                         .expect("Listeners must have at least one host:port listed")
                                         .contains(&self.target)
                                     {
                                         newlis.push(lis.clone());
+                                    } else {
+                                        self.listener = Some(lis)
                                     }
                                 }
 
@@ -160,5 +195,7 @@ impl HealthCheckAction {
                 config.lock().await.zones = zones;
             }
         }
+
+        // FIXME trigger DNS reload context
     }
 }
