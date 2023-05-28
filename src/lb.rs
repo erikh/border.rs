@@ -43,7 +43,7 @@ pub struct TLSSettings {
 }
 
 pub struct LB {
-    config: Config,
+    config: Arc<Mutex<Config>>,
     record: RecordType,
 }
 
@@ -113,7 +113,7 @@ impl BackendCount {
 }
 
 impl LB {
-    pub fn new(config: Config, record: RecordType) -> Result<Self, anyhow::Error> {
+    pub fn new(config: Arc<Mutex<Config>>, record: RecordType) -> Result<Self, anyhow::Error> {
         match record {
             RecordType::LB { .. } => {}
             _ => return Err(anyhow!("Record type was not LB")),
@@ -122,14 +122,14 @@ impl LB {
         Ok(Self { config, record })
     }
 
-    fn listen_addrs(&self) -> Result<Option<Vec<SocketAddr>>, anyhow::Error> {
+    async fn listen_addrs(&self) -> Result<Option<Vec<SocketAddr>>, anyhow::Error> {
         match &self.record {
             RecordType::LB { listeners, .. } => {
                 let mut addresses: Option<Vec<SocketAddr>> = None;
 
                 for listener in listeners {
-                    if listener.name() == self.config.me {
-                        addresses = listener.addr(self.config.clone());
+                    if listener.name() == self.config.lock().await.me {
+                        addresses = listener.addr(self.config.clone()).await;
                         break;
                     }
                 }
@@ -155,12 +155,11 @@ impl LB {
     }
 
     async fn serve_http(&self, context: Arc<AtomicBool>) -> Result<(), anyhow::Error> {
-        let addresses = self.listen_addrs()?.expect("No addresses to bind to");
+        let addresses = self.listen_addrs().await?.expect("No addresses to bind to");
 
         for address in addresses {
             tokio::spawn(Self::serve_http_listener(
                 context.clone(),
-                self.config.clone(),
                 self.backends()?,
                 address,
             ));
@@ -222,7 +221,6 @@ impl LB {
 
     async fn serve_http_listener(
         context: Arc<AtomicBool>,
-        _config: Config,
         backends: Vec<SocketAddr>,
         address: SocketAddr,
     ) -> Result<(), anyhow::Error> {
@@ -272,12 +270,11 @@ impl LB {
     }
 
     async fn serve_tcp(&self, context: Arc<AtomicBool>) -> Result<(), anyhow::Error> {
-        let addresses = self.listen_addrs()?.expect("No addresses to bind to");
+        let addresses = self.listen_addrs().await?.expect("No addresses to bind to");
 
         for address in addresses {
             tokio::spawn(Self::serve_tcp_listener(
                 context.clone(),
-                self.config.clone(),
                 self.backends()?,
                 address,
             ));
@@ -288,7 +285,6 @@ impl LB {
 
     async fn serve_tcp_listener(
         context: Arc<AtomicBool>,
-        _config: Config,
         mut backends: Vec<SocketAddr>,
         address: SocketAddr,
     ) -> Result<(), anyhow::Error> {

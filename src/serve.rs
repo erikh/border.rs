@@ -27,8 +27,7 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn new(config: &Config) -> Self {
-        let config = Arc::new(Mutex::new(config.clone()));
+    pub fn new(config: Arc<Mutex<Config>>) -> Self {
         let context = Arc::new(AtomicBool::default());
         Self { config, context }
     }
@@ -53,8 +52,7 @@ impl Server {
                 .collect::<Vec<Record>>();
 
             for record in &records {
-                let config = self.config.lock().await.clone();
-                let lb = LB::new(config, record.record.clone())?;
+                let lb = LB::new(self.config.clone(), record.record.clone())?;
                 let context = self.context.clone();
                 tokio::spawn(async move { lb.serve(context).await.unwrap() });
             }
@@ -102,21 +100,17 @@ impl Server {
                     trust_dns_server::proto::rr::RecordType::SOA,
                 ),
                 zone.soa
-                    .to_record(
-                        &self.config.lock().await.clone(),
-                        name.name().clone(),
-                        zone.soa.serial(),
-                    )
+                    .to_record(self.config.clone(), name.name().clone(), zone.soa.serial())
+                    .await
                     .first()
                     .expect("Expected a SOA record")
                     .clone(),
             );
 
-            let ns_records = zone.ns.to_record(
-                &self.config.lock().await.clone(),
-                name.name().clone(),
-                zone.soa.serial(),
-            );
+            let ns_records = zone
+                .ns
+                .to_record(self.config.clone(), name.name().clone(), zone.soa.serial())
+                .await;
             for record in ns_records {
                 records.insert(
                     RrKey::new(
@@ -128,11 +122,14 @@ impl Server {
             }
 
             for zonerec in &zone.records {
-                let rec = zonerec.record.to_record(
-                    &self.config.lock().await.clone(),
-                    zonerec.name.name().clone(),
-                    zone.soa.serial(),
-                );
+                let rec = zonerec
+                    .record
+                    .to_record(
+                        self.config.clone(),
+                        zonerec.name.name().clone(),
+                        zone.soa.serial(),
+                    )
+                    .await;
 
                 for rectype in rec {
                     records.insert(

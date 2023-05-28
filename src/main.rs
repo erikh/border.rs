@@ -1,9 +1,10 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
 use anyhow::anyhow;
 use border::{config::Config, serve::Server};
 use clap::{Parser, Subcommand};
 use josekit::{jwe::alg::aeskw::AeskwJweAlgorithm, jwk::Jwk};
+use tokio::sync::Mutex;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -76,7 +77,7 @@ async fn serve(filename: PathBuf, peer: String) -> CommandResult {
 
     config.me = peer;
 
-    let server = Server::new(&config);
+    let server = Server::new(Arc::new(Mutex::new(config)));
     server.start().await
 }
 

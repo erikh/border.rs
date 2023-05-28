@@ -5,8 +5,13 @@ use crate::{
     lb::{LBKind, TLSSettings},
     listener::Listener,
 };
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::{
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    sync::Arc,
+};
+use tokio::sync::Mutex;
 use trust_dns_server::proto::rr::{Name, Record, RecordSet};
 
 fn default_ttl() -> u32 {
@@ -16,8 +21,14 @@ fn default_ttl() -> u32 {
 // TODO trait for health checks
 // TODO trait for LB generation
 
+#[async_trait]
 pub trait ToRecord {
-    fn to_record(&self, config: &Config, domain: Name, serial: u32) -> Vec<RecordSet>;
+    async fn to_record(
+        &self,
+        config: Arc<Mutex<Config>>,
+        domain: Name,
+        serial: u32,
+    ) -> Vec<RecordSet>;
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -106,15 +117,22 @@ fn generate_a(domain: Name, serial: u32, addresses: Vec<IpAddr>, ttl: u32) -> Ve
     vec![v4rs, v6rs]
 }
 
+#[async_trait]
 impl ToRecord for RecordType {
-    fn to_record(&self, config: &Config, domain: Name, serial: u32) -> Vec<RecordSet> {
+    async fn to_record(
+        &self,
+        config: Arc<Mutex<Config>>,
+        domain: Name,
+        serial: u32,
+    ) -> Vec<RecordSet> {
         match self {
             RecordType::LB { listeners, ttl, .. } => {
                 let mut addresses: Option<Vec<SocketAddr>> = None;
+                let me = config.lock().await.me.clone();
 
                 for listener in listeners {
-                    if listener.name() == config.me {
-                        addresses = listener.addr(config.clone());
+                    if listener.name() == me {
+                        addresses = listener.addr(config.clone()).await;
                         break;
                     }
                 }
@@ -160,8 +178,14 @@ impl SOA {
     }
 }
 
+#[async_trait]
 impl ToRecord for SOA {
-    fn to_record(&self, _config: &Config, domain: Name, serial: u32) -> Vec<RecordSet> {
+    async fn to_record(
+        &self,
+        _config: Arc<Mutex<Config>>,
+        domain: Name,
+        serial: u32,
+    ) -> Vec<RecordSet> {
         let mut rs = RecordSet::new(
             &domain,
             trust_dns_server::proto::rr::RecordType::SOA,
@@ -198,8 +222,14 @@ pub struct NS {
     ttl: u32,
 }
 
+#[async_trait]
 impl ToRecord for NS {
-    fn to_record(&self, _config: &Config, domain: Name, serial: u32) -> Vec<RecordSet> {
+    async fn to_record(
+        &self,
+        _config: Arc<Mutex<Config>>,
+        domain: Name,
+        serial: u32,
+    ) -> Vec<RecordSet> {
         let mut rs = RecordSet::new(
             &domain,
             trust_dns_server::proto::rr::RecordType::NS,

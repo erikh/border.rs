@@ -1,5 +1,6 @@
 use serde::{de::Visitor, Deserialize, Serialize};
-use std::net::SocketAddr;
+use std::{net::SocketAddr, sync::Arc};
+use tokio::sync::Mutex;
 
 use crate::config::Config;
 
@@ -15,8 +16,8 @@ impl Listener {
         self.1
     }
 
-    pub fn addr(&self, c: Config) -> Option<Vec<SocketAddr>> {
-        for peer in c.peers {
+    pub async fn addr(&self, c: Arc<Mutex<Config>>) -> Option<Vec<SocketAddr>> {
+        for peer in &c.lock().await.peers {
             if peer.name() == self.name() {
                 return Some(
                     peer.ips
