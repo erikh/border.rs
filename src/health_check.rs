@@ -74,7 +74,7 @@ impl HealthCheckAction {
         }
     }
 
-    async fn adjust_config(&self, config: SafeConfig) {
+    async fn remove_config(&self, config: SafeConfig) {
         match self.target_type {
             HealthCheckTargetType::DNS => {
                 let target_name = self.target_name.clone().unwrap();
@@ -94,7 +94,9 @@ impl HealthCheckAction {
                                         if lis
                                             .addr(config.clone())
                                             .await
-                                            .unwrap()
+                                            .expect(
+                                                "Listeners must have at least one host:port listed",
+                                            )
                                             .contains(&self.target)
                                         {
                                             newlis.push(lis.clone());
@@ -112,8 +114,51 @@ impl HealthCheckAction {
 
                 config.lock().await.zones = zones;
             }
-            HealthCheckTargetType::LBBackend => {}
-            HealthCheckTargetType::LBFrontend => {}
+            HealthCheckTargetType::LBBackend => {
+                let mut zones = config.lock().await.zones.clone();
+
+                for zone in &mut zones {
+                    for record in &mut zone.1.records {
+                        match &mut record.record {
+                            RecordType::LB { backends, .. } => {
+                                backends.retain(|be| *be != self.target)
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+
+                config.lock().await.zones = zones;
+            }
+            HealthCheckTargetType::LBFrontend => {
+                let mut zones = config.lock().await.zones.clone();
+
+                for zone in &mut zones {
+                    for record in &mut zone.1.records {
+                        match &mut record.record {
+                            RecordType::LB { listeners, .. } => {
+                                let mut newlis = Vec::new();
+                                for lis in &mut *listeners {
+                                    if lis
+                                        .addr(config.clone())
+                                        .await
+                                        .expect("Listeners must have at least one host:port listed")
+                                        .contains(&self.target)
+                                    {
+                                        newlis.push(lis.clone());
+                                    }
+                                }
+
+                                listeners.clear();
+                                listeners.append(&mut newlis);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+
+                config.lock().await.zones = zones;
+            }
         }
     }
 }
