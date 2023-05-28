@@ -105,7 +105,7 @@ impl HealthCheckAction {
         }
     }
 
-    async fn remove_config(&self, config: SafeConfig) {
+    async fn remove_config(&mut self, config: SafeConfig) {
         match self.target_type {
             HealthCheckTargetType::DNS => {
                 let target_name = self.target_name.clone().unwrap();
@@ -132,7 +132,7 @@ impl HealthCheckAction {
                                         {
                                             newlis.push(lis.clone());
                                         } else {
-                                            self.listener = Some(lis)
+                                            self.listener = Some(lis.clone())
                                         }
                                     }
 
@@ -180,7 +180,7 @@ impl HealthCheckAction {
                                     {
                                         newlis.push(lis.clone());
                                     } else {
-                                        self.listener = Some(lis)
+                                        self.listener = Some(lis.clone())
                                     }
                                 }
 
