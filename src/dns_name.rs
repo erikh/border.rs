@@ -5,6 +5,10 @@ use trust_dns_server::proto::rr::Name;
 pub struct DNSName(Name);
 
 impl DNSName {
+    pub fn parse(s: &str) -> Result<Self, anyhow::Error> {
+        Ok(DNSName(Name::parse(s, None)?))
+    }
+
     pub fn name(&self) -> &Name {
         &self.0
     }

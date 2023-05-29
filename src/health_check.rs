@@ -34,7 +34,7 @@ pub struct HealthCheckAction {
     healthcheck: HealthCheck,
     target: SocketAddr,
     target_type: HealthCheckTargetType,
-    target_name: Option<DNSName>,
+    target_name: Option<String>,
     listener: Option<Listener>,
 }
 
@@ -49,7 +49,7 @@ impl HealthCheck {
         self,
         target: SocketAddr,
         target_type: HealthCheckTargetType,
-        target_name: Option<DNSName>,
+        target_name: Option<String>,
     ) -> HealthCheckAction {
         HealthCheckAction {
             healthcheck: self,
@@ -79,7 +79,7 @@ impl HealthCheckAction {
     async fn add_config(&self, config: SafeConfig) {
         match self.target_type {
             HealthCheckTargetType::DNS => {
-                let target_name = self.target_name.clone().unwrap();
+                let target_name = DNSName::parse(&self.target_name.clone().unwrap()).unwrap();
                 let mut zones = config.lock().await.zones.clone();
 
                 for zone in &mut zones {
@@ -108,7 +108,7 @@ impl HealthCheckAction {
     async fn remove_config(&mut self, config: SafeConfig) {
         match self.target_type {
             HealthCheckTargetType::DNS => {
-                let target_name = self.target_name.clone().unwrap();
+                let target_name = DNSName::parse(&self.target_name.clone().unwrap()).unwrap();
 
                 let mut zones = config.lock().await.zones.clone();
 

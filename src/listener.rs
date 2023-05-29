@@ -1,4 +1,5 @@
 use crate::config::SafeConfig;
+use anyhow::anyhow;
 use serde::{de::Visitor, Deserialize, Serialize};
 use std::net::SocketAddr;
 
@@ -6,6 +7,18 @@ use std::net::SocketAddr;
 pub struct Listener(String, u16);
 
 impl Listener {
+    pub fn parse(s: &str) -> Result<Self, anyhow::Error> {
+        let mut parts = s.splitn(2, ':');
+        if parts.clone().count() != 2 {
+            return Err(anyhow!("Listener was not in peer:port format"));
+        }
+
+        let name = parts.next().unwrap();
+        let port: u16 = parts.next().unwrap().parse()?;
+
+        Ok(Self(name.to_string(), port))
+    }
+
     pub fn name(&self) -> String {
         self.0.clone()
     }
