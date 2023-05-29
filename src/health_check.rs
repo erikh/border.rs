@@ -34,7 +34,7 @@ pub struct HealthCheckAction {
     healthcheck: HealthCheck,
     target: SocketAddr,
     target_type: HealthCheckTargetType,
-    target_name: Option<String>,
+    target_name: Option<DNSName>,
     listener: Option<Listener>,
 }
 
@@ -49,7 +49,7 @@ impl HealthCheck {
         self,
         target: SocketAddr,
         target_type: HealthCheckTargetType,
-        target_name: Option<String>,
+        target_name: Option<DNSName>,
     ) -> HealthCheckAction {
         HealthCheckAction {
             healthcheck: self,
@@ -79,7 +79,7 @@ impl HealthCheckAction {
     async fn add_config(&self, config: SafeConfig) {
         match self.target_type {
             HealthCheckTargetType::DNS => {
-                let target_name = DNSName::parse(&self.target_name.clone().unwrap()).unwrap();
+                let target_name = self.target_name.clone().unwrap();
                 let mut zones = config.lock().await.zones.clone();
 
                 for zone in &mut zones {
@@ -100,15 +100,49 @@ impl HealthCheckAction {
 
                 config.lock().await.zones = zones;
             }
-            HealthCheckTargetType::LBFrontend => {}
-            HealthCheckTargetType::LBBackend => {}
+            HealthCheckTargetType::LBFrontend => {
+                let target_name = self.target_name.clone().unwrap();
+                let mut zones = config.lock().await.zones.clone();
+
+                for zone in &mut zones {
+                    for record in &mut zone.1.records {
+                        if record.name == target_name {
+                            match &mut record.record {
+                                RecordType::LB { listeners, .. } => {
+                                    if let Some(lis) = &self.listener {
+                                        listeners.push(lis.clone())
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+            }
+            HealthCheckTargetType::LBBackend => {
+                let target_name = self.target_name.clone().unwrap();
+                let mut zones = config.lock().await.zones.clone();
+
+                for zone in &mut zones {
+                    for record in &mut zone.1.records {
+                        if record.name == target_name {
+                            match &mut record.record {
+                                RecordType::LB { backends, .. } => {
+                                    backends.push(self.target.clone())
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
     async fn remove_config(&mut self, config: SafeConfig) {
         match self.target_type {
             HealthCheckTargetType::DNS => {
-                let target_name = DNSName::parse(&self.target_name.clone().unwrap()).unwrap();
+                let target_name = self.target_name.clone().unwrap();
 
                 let mut zones = config.lock().await.zones.clone();
 
