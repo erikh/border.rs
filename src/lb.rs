@@ -1,13 +1,3 @@
-use std::{
-    collections::BTreeMap,
-    net::SocketAddr,
-    str::FromStr,
-    sync::{
-        atomic::{AtomicBool, AtomicU64, Ordering},
-        Arc,
-    },
-};
-
 use anyhow::anyhow;
 use hyper::{
     client::HttpConnector,
@@ -19,6 +9,15 @@ use hyper::{
     Body, Client, Request, Response, Server, Uri,
 };
 use serde::{Deserialize, Serialize};
+use std::{
+    collections::BTreeMap,
+    net::SocketAddr,
+    str::FromStr,
+    sync::{
+        atomic::{AtomicBool, AtomicU64, Ordering},
+        Arc,
+    },
+};
 use tokio::{
     net::{TcpListener, TcpStream},
     sync::Mutex,
