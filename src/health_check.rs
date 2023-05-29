@@ -118,6 +118,8 @@ impl HealthCheckAction {
                         }
                     }
                 }
+
+                config.lock().await.zones = zones;
             }
             HealthCheckTargetType::LBBackend => {
                 let target_name = self.target_name.clone().unwrap();
@@ -135,6 +137,8 @@ impl HealthCheckAction {
                         }
                     }
                 }
+
+                config.lock().await.zones = zones;
             }
         }
     }
