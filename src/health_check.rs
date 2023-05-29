@@ -141,6 +141,8 @@ impl HealthCheckAction {
                 config.lock().await.zones = zones;
             }
         }
+
+        // FIXME trigger DNS reload context
     }
 
     async fn remove_config(&mut self, config: SafeConfig) {
