@@ -1,3 +1,4 @@
+use crate::{config::SafeConfig, record_type::RecordType};
 use anyhow::anyhow;
 use hyper::{
     client::HttpConnector,
@@ -22,8 +23,6 @@ use tokio::{
     net::{TcpListener, TcpStream},
     sync::Mutex,
 };
-
-use crate::{config::SafeConfig, record_type::RecordType};
 
 const HEADER_X_FORWARDED_FOR: &str = "X-Forwarded-For";
 

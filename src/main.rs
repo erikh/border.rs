@@ -1,9 +1,8 @@
-use std::{path::PathBuf, sync::Arc};
-
 use anyhow::anyhow;
 use border::{config::Config, serve::Server};
 use clap::{Parser, Subcommand};
 use josekit::{jwe::alg::aeskw::AeskwJweAlgorithm, jwk::Jwk};
+use std::{path::PathBuf, sync::Arc};
 use tokio::sync::Mutex;
 
 #[derive(Parser, Debug)]

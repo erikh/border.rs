@@ -1,11 +1,10 @@
 #![allow(dead_code)]
+use crate::{config::SafeConfig, dns_name::DNSName, listener::Listener, record_type::RecordType};
 use anyhow::anyhow;
 use fancy_duration::FancyDuration;
 use serde::{Deserialize, Serialize};
 use std::{net::SocketAddr, time::Duration};
 use tokio::net::TcpStream;
-
-use crate::{config::SafeConfig, dns_name::DNSName, listener::Listener, record_type::RecordType};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub enum HealthCheckType {
