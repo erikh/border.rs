@@ -3,7 +3,10 @@ use crate::{config::SafeConfig, dns_name::DNSName, listener::Listener};
 use anyhow::anyhow;
 use fancy_duration::FancyDuration;
 use serde::{Deserialize, Serialize};
-use std::{net::SocketAddr, time::Duration};
+use std::{
+    net::SocketAddr,
+    time::{Duration, SystemTime},
+};
 use tokio::net::TcpStream;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -35,6 +38,8 @@ pub struct HealthCheckAction {
     target_type: HealthCheckTargetType,
     target_name: DNSName,
     listener: Option<Listener>,
+    failure_count: u8,
+    last_failure: Option<SystemTime>,
 }
 
 #[derive(Clone)]
@@ -57,6 +62,24 @@ impl HealthCheck {
             target_type,
             target_name,
             listener,
+            failure_count: 0,
+            last_failure: None,
+        }
+    }
+}
+
+impl HealthChecker {
+    pub fn new(actions: Vec<HealthCheckAction>, config: SafeConfig) -> Self {
+        Self { actions, config }
+    }
+
+    pub async fn run(&mut self) {
+        loop {
+            for check in &mut self.actions {
+                check.perform(self.config.clone()).await;
+            }
+
+            tokio::time::sleep(Duration::new(1, 0)).await;
         }
     }
 }
@@ -117,11 +140,9 @@ impl HealthCheckAction {
                 }
             }
         }
-
-        // FIXME trigger DNS reload context
     }
 
-    async fn remove_config(&mut self, config: SafeConfig) {
+    async fn remove_config(&self, config: SafeConfig) {
         match self.target_type {
             HealthCheckTargetType::DNS => {
                 let mut config = config.lock().await;
@@ -158,7 +179,27 @@ impl HealthCheckAction {
                 }
             }
         }
+    }
 
-        // FIXME trigger DNS reload context
+    pub async fn perform(&mut self, config: SafeConfig) {
+        match self.check().await {
+            Ok(_) => {
+                if self.failure_count >= self.healthcheck.failures {
+                    self.add_config(config).await;
+                }
+
+                self.failure_count = 0;
+                self.last_failure = None;
+            }
+            // FIXME log
+            Err(_) => {
+                self.failure_count += 1;
+                self.last_failure = Some(SystemTime::now());
+
+                if self.healthcheck.failures <= self.failure_count {
+                    self.remove_config(config).await;
+                }
+            }
+        }
     }
 }
