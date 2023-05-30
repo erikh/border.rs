@@ -77,7 +77,7 @@ async fn serve(filename: PathBuf, peer: String) -> CommandResult {
     config.me = peer;
 
     let server = Server::new(Arc::new(Mutex::new(config)));
-    server.start().await
+    server.serve().await
 }
 
 fn check_config(filename: PathBuf) -> CommandResult {

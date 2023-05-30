@@ -20,17 +20,33 @@ use trust_dns_server::{
 #[derive(Clone)]
 pub struct Server {
     config: SafeConfig,
-    context: Arc<AtomicBool>,
+    restart_context: Arc<AtomicBool>,
+    shutdown_context: Arc<AtomicBool>,
 }
 
 impl Server {
     pub fn new(config: SafeConfig) -> Self {
-        let context = Arc::new(AtomicBool::default());
-        Self { config, context }
+        let restart_context = Arc::new(AtomicBool::default());
+        let shutdown_context = Arc::new(AtomicBool::default());
+        Self {
+            config,
+            restart_context,
+            shutdown_context,
+        }
+    }
+
+    pub async fn serve(&self) -> Result<(), anyhow::Error> {
+        loop {
+            self.restart_context.store(false, Ordering::Relaxed);
+            self.start().await?;
+            if self.shutdown_context.load(Ordering::Relaxed) {
+                return Ok(());
+            }
+        }
     }
 
     pub fn shutdown(&self) {
-        self.context.store(true, Ordering::Relaxed)
+        self.shutdown_context.store(true, Ordering::Relaxed)
     }
 
     pub async fn start(&self) -> Result<(), anyhow::Error> {
@@ -50,7 +66,7 @@ impl Server {
 
             for record in &records {
                 let lb = LB::new(self.config.clone(), record.record.clone())?;
-                let context = self.context.clone();
+                let context = self.restart_context.clone();
                 tokio::spawn(async move { lb.serve(context).await.unwrap() });
             }
         }
@@ -59,7 +75,7 @@ impl Server {
         let handle = tokio::spawn(async move { obj.dns().await.unwrap() });
 
         loop {
-            if self.context.load(Ordering::Relaxed) {
+            if self.restart_context.load(Ordering::Relaxed) {
                 handle.abort();
                 break;
             }
