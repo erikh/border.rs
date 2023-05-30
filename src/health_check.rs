@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use crate::{config::SafeConfig, dns_name::DNSName, listener::Listener, record_type::RecordType};
+use crate::{config::SafeConfig, dns_name::DNSName, listener::Listener};
 use anyhow::anyhow;
 use fancy_duration::FancyDuration;
 use serde::{Deserialize, Serialize};
@@ -33,7 +33,7 @@ pub struct HealthCheckAction {
     healthcheck: HealthCheck,
     target: SocketAddr,
     target_type: HealthCheckTargetType,
-    target_name: Option<DNSName>,
+    target_name: DNSName,
     listener: Option<Listener>,
 }
 
@@ -48,20 +48,20 @@ impl HealthCheck {
         self,
         target: SocketAddr,
         target_type: HealthCheckTargetType,
-        target_name: Option<DNSName>,
+        target_name: DNSName,
+        listener: Option<Listener>,
     ) -> HealthCheckAction {
         HealthCheckAction {
             healthcheck: self,
             target,
             target_type,
             target_name,
-            listener: None,
+            listener,
         }
     }
 }
 
 impl HealthCheckAction {
-    // chi chiggity check yo self
     async fn check(&self) -> Result<(), anyhow::Error> {
         match self.healthcheck.typ {
             HealthCheckType::TCP => self.check_tcp().await,
@@ -78,66 +78,43 @@ impl HealthCheckAction {
     async fn add_config(&self, config: SafeConfig) {
         match self.target_type {
             HealthCheckTargetType::DNS => {
-                let target_name = self.target_name.clone().unwrap();
-                let mut zones = config.lock().await.zones.clone();
+                let mut config = config.lock().await;
 
-                for zone in &mut zones {
-                    for record in &mut zone.1.records {
-                        if record.name == target_name {
-                            match &mut record.record {
-                                RecordType::A { addresses, .. } => addresses.push(self.target.ip()),
-                                RecordType::LB { listeners, .. } => {
-                                    if let Some(lis) = &self.listener {
-                                        listeners.push(lis.clone())
-                                    }
-                                }
-                                _ => {}
+                for (_, zone) in &mut config.zones {
+                    for record in &mut zone.records {
+                        if record.name == self.target_name {
+                            if let Some(lis) = &self.listener {
+                                record.add_listener(lis.clone());
                             }
+
+                            record.add_ip(self.target.ip())
                         }
                     }
                 }
-
-                config.lock().await.zones = zones;
             }
             HealthCheckTargetType::LBFrontend => {
-                let target_name = self.target_name.clone().unwrap();
-                let mut zones = config.lock().await.zones.clone();
+                let mut config = config.lock().await;
 
-                for zone in &mut zones {
-                    for record in &mut zone.1.records {
-                        if record.name == target_name {
-                            match &mut record.record {
-                                RecordType::LB { listeners, .. } => {
-                                    if let Some(lis) = &self.listener {
-                                        listeners.push(lis.clone())
-                                    }
-                                }
-                                _ => {}
+                for (_, zone) in &mut config.zones {
+                    for record in &mut zone.records {
+                        if record.name == self.target_name {
+                            if let Some(lis) = &self.listener {
+                                record.add_listener(lis.clone());
                             }
                         }
                     }
                 }
-
-                config.lock().await.zones = zones;
             }
             HealthCheckTargetType::LBBackend => {
-                let target_name = self.target_name.clone().unwrap();
-                let mut zones = config.lock().await.zones.clone();
+                let mut config = config.lock().await;
 
-                for zone in &mut zones {
-                    for record in &mut zone.1.records {
-                        if record.name == target_name {
-                            match &mut record.record {
-                                RecordType::LB { backends, .. } => {
-                                    backends.push(self.target.clone())
-                                }
-                                _ => {}
-                            }
+                for (_, zone) in &mut config.zones {
+                    for record in &mut zone.records {
+                        if record.name == self.target_name {
+                            record.add_backend(self.target);
                         }
                     }
                 }
-
-                config.lock().await.zones = zones;
             }
         }
 
@@ -147,91 +124,38 @@ impl HealthCheckAction {
     async fn remove_config(&mut self, config: SafeConfig) {
         match self.target_type {
             HealthCheckTargetType::DNS => {
-                let target_name = self.target_name.clone().unwrap();
-
-                let mut zones = config.lock().await.zones.clone();
-
-                for zone in &mut zones {
-                    for record in &mut zone.1.records {
-                        if record.name == target_name {
-                            match &mut record.record {
-                                RecordType::A { addresses, .. } => {
-                                    addresses.retain(|addr| *addr != self.target.ip())
-                                }
-                                RecordType::LB { listeners, .. } => {
-                                    let mut newlis = Vec::new();
-                                    for lis in &mut *listeners {
-                                        if !lis
-                                            .addr(config.clone())
-                                            .await
-                                            .expect(
-                                                "Listeners must have at least one host:port listed",
-                                            )
-                                            .contains(&self.target)
-                                        {
-                                            newlis.push(lis.clone());
-                                        } else {
-                                            self.listener = Some(lis.clone())
-                                        }
-                                    }
-
-                                    listeners.clear();
-                                    listeners.append(&mut newlis);
-                                }
-                                _ => {}
-                            }
+                let mut config = config.lock().await;
+                for (_, zone) in &mut config.zones {
+                    for record in &mut zone.records {
+                        if record.name == self.target_name {
+                            record.remove_ip(self.target.ip());
                         }
                     }
                 }
-
-                config.lock().await.zones = zones;
             }
             HealthCheckTargetType::LBBackend => {
-                let mut zones = config.lock().await.zones.clone();
-
-                for zone in &mut zones {
-                    for record in &mut zone.1.records {
-                        match &mut record.record {
-                            RecordType::LB { backends, .. } => {
-                                backends.retain(|be| *be != self.target)
-                            }
-                            _ => {}
+                let mut config = config.lock().await;
+                for (_, zone) in &mut config.zones {
+                    for record in &mut zone.records {
+                        if record.name == self.target_name {
+                            record.remove_backend(self.target);
                         }
                     }
                 }
-
-                config.lock().await.zones = zones;
             }
             HealthCheckTargetType::LBFrontend => {
-                let mut zones = config.lock().await.zones.clone();
-
-                for zone in &mut zones {
-                    for record in &mut zone.1.records {
-                        match &mut record.record {
-                            RecordType::LB { listeners, .. } => {
-                                let mut newlis = Vec::new();
-                                for lis in &mut *listeners {
-                                    if !lis
-                                        .addr(config.clone())
-                                        .await
-                                        .expect("Listeners must have at least one host:port listed")
-                                        .contains(&self.target)
-                                    {
-                                        newlis.push(lis.clone());
-                                    } else {
-                                        self.listener = Some(lis.clone())
-                                    }
-                                }
-
-                                listeners.clear();
-                                listeners.append(&mut newlis);
+                let mut config = config.lock().await;
+                for (_, zone) in &mut config.zones {
+                    for record in &mut zone.records {
+                        if record.name == self.target_name {
+                            if let Some(lis) = &self.listener {
+                                record.remove_listener(lis.clone())
                             }
-                            _ => {}
+
+                            record.remove_ip(self.target.ip());
                         }
                     }
                 }
-
-                config.lock().await.zones = zones;
             }
         }
 

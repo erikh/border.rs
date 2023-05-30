@@ -1,5 +1,6 @@
 use crate::{
     dns_name::DNSName,
+    listener::Listener,
     record_type::{RecordType, NS, SOA},
 };
 use fancy_duration::FancyDuration;
@@ -60,4 +61,48 @@ pub struct Zone {
 pub struct Record {
     pub name: DNSName,
     pub record: RecordType,
+}
+
+impl Record {
+    pub fn add_listener(&mut self, listener: Listener) {
+        match &mut self.record {
+            RecordType::LB { listeners, .. } => listeners.push(listener),
+            _ => {}
+        }
+    }
+
+    pub fn add_ip(&mut self, ip: IpAddr) {
+        match &mut self.record {
+            RecordType::A { addresses, .. } => addresses.push(ip),
+            _ => {}
+        }
+    }
+
+    pub fn add_backend(&mut self, addr: SocketAddr) {
+        match &mut self.record {
+            RecordType::LB { backends, .. } => backends.push(addr),
+            _ => {}
+        }
+    }
+
+    pub fn remove_ip(&mut self, ip: IpAddr) {
+        match &mut self.record {
+            RecordType::A { addresses, .. } => addresses.retain(|addr| *addr != ip),
+            _ => {}
+        }
+    }
+
+    pub fn remove_listener(&mut self, listener: Listener) {
+        match &mut self.record {
+            RecordType::LB { listeners, .. } => listeners.retain(|lis| *lis != listener),
+            _ => {}
+        }
+    }
+
+    pub fn remove_backend(&mut self, addr: SocketAddr) {
+        match &mut self.record {
+            RecordType::LB { backends, .. } => backends.retain(|be| *be != addr),
+            _ => {}
+        }
+    }
 }
